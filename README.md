@@ -1,112 +1,70 @@
 # Ultimate Expression Manager
 
-A proper editor for VRChat expression menus inside Unity — no need to enter Play Mode.
+A Unity tool for editing VRChat expression menus without going into Play Mode.
 
 ---
 
-## What this tool does
+## What it does
 
-Ultimate Expression Manager scans your avatar and rebuilds your entire expression system into a single, structured view.
+It scans your avatar and puts all expression-related systems into one clean view.
 
-It pulls in:
+This includes:
 
-- Native VRChat expression menus  
+- VRChat expression menus  
 - VRCFury toggles  
-- Full controller setups  
+- Full Controllers
 
-Everything is presented in one unified hierarchy that you can actually work with.
+Everything is shown as one simple hierarchy.
 
 ---
 
-## Why this exists
+## Why it helps
 
-If you’ve worked on a VRChat avatar, you already know the problem:
+VRChat avatars get messy fast:
 
 - Menus are deeply nested  
-- Toggles are scattered across multiple objects  
-- VRCFury adds power, but not visibility  
-- Simple changes can take far too long  
-- Large avatars quickly become confusing and hard to manage  
+- Toggles are spread everywhere  
+- VRCFury is powerful but hard to visualize  
+- Small changes take too long  
 
-This tool is built to fix that.
-
----
-
-# Core features
-
-## Full avatar scan
-Builds a complete tree of your expression system, including:
-
-- Submenus  
-- Toggle layers  
-- VRCFury components  
+This tool fixes that by making everything visible in one place.
 
 ---
 
-## Direct editing
-Rename items and change icons without digging through prefabs or components.
+## Main features
+
+- **Full scan** of your avatar expression system  
+- **Edit names and icons** directly  
+- **Drag and drop** menu items to reorganize  
+- **Search** to quickly find anything  
+- **Non-destructive edits** using VRCFury-safe changes  
+- Fully supports **Undo system**
 
 ---
 
-## Drag-and-drop organization
-Move menu items visually instead of manually rebuilding controller structures.
+## Built for
 
----
-
-## Search and filtering
-Quickly find anything in large avatars and reduce visual clutter when needed.
-
----
-
-## Non-destructive workflow
-All changes are applied through a management layer using VRCFury-safe operations such as:
-
-- Move Menu Item  
-- Override Menu Icon  
-
-Your original setup is preserved. Everything is also fully integrated with Unity’s Undo system for safe, reversible editing.
-
----
-
-# Built for real production use
-
-Designed for:
-
-- Complex avatars with large menu systems  
+- Large or complex avatars  
 - Heavy VRCFury setups  
-- Commission workflows where speed matters  
-
-Even smaller avatars benefit, but this really shines when things get messy.
+- Commission work and fast iteration  
 
 ---
 
-# Extra benefit: debugging
+## Requirements
 
-Because it reconstructs your full menu tree, you can:
-
-- See how everything is actually connected  
-- Identify duplicates or broken structure  
-- Clean up poorly organized systems  
+- Unity + VRChat SDK  
+- VRCFury (recommended)
 
 ---
 
-# Requirements
-
-- Unity project with VRChat SDK  
-- VRCFury installed (recommended for full functionality)  
-
----
-
-# What you get
+## What you get
 
 - Unity Editor window tool  
-- No setup beyond importing the script  
 - Works directly on your avatar  
+- No setup beyond importing  
 
 ---
 
 ## Summary
 
-This tool doesn’t add new features to your avatar.
-
-It gives you control over the ones you already have.
+Instead of hunting through layers of menus and toggles, you see everything in one place and edit it directly.
