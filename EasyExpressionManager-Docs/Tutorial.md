@@ -125,3 +125,20 @@ means the folder contains **10 items**, exceeding VRChat's **8-item** limit.
 
 ![Item Counter](https://public-files.gumroad.com/vcubcd4816wdb8tlstcykc2d3pg8)
 
+---
+
+# Badges
+
+Easy Expression Manager uses badges to show where each item comes from and how it is being managed.
+
+- **VRC** = Native VRC menu control
+- **Fury** = VRCFury Toggle
+- **FC** = Full Controller-sourced control
+- **FC⌂** = Folder created by a Full Controller's prefix field
+- **VM** = Virtual menu (plugin-only)
+- **→** = Position managed by a Move Menu Item
+- **🖼** = Icon managed by an Override Menu Icon
+- **×N** = N separate components producing this exact path
+- **/!** = Name contains `/`, which VRCFury reads as a folder separator
+
+
