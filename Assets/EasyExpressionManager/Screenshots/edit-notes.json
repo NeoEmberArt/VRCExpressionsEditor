@@ -1,0 +1,130 @@
+{
+  "tool": "Built-in image_gen",
+  "style": "Tight screenshot crops, preserved UI, cyan arrows and brief feature callouts.",
+  "images": [
+    {
+      "filename": "EEM_01_unified_menu_tree.png",
+      "instructions": "Keep title and full width, crop away bottom below y=950. Add two cyan arrows pointing to the unified left menu tree and the 'VRCFury Full Controller' source Details line in the right panel, using clear empty spaces. Short labels 'One tree for all menu sources' and 'See where each item comes from'."
+    },
+    {
+      "filename": "EEM_02_split_and_classic_designs.png",
+      "instructions": "Crop to title plus top toolbar and upper two panes only, approximately original y=0..560 full width. Arrow pointing to top-right Design: Split View dropdown. Label 'Switch between Split View and Classic'. Do not invent an additional Classic view."
+    },
+    {
+      "filename": "EEM_03_virtual_menus.png",
+      "instructions": "Crop to left pane only x=0..420 y=0..570, retaining original title even if you must retain full title banner separately with matching original pixels. Single cyan arrow pointing to '+ Virtual Menu' button. Label 'Create folders without editing source menus' placed below tree, not covering button or list."
+    },
+    {
+      "filename": "EEM_04_rename.png",
+      "instructions": "Crop at y545, highlight inline rename and right Name field."
+    },
+    {
+      "filename": "EEM_05_move_and_drag_drop.png",
+      "instructions": "Crop bottom unused area, keep original y=0..725 full width. Single cyan arrow from right empty space to 'Move...' button original x493..781 y370..392. Label 'Move items into another folder'. Smaller arrow to selected set A row from blank left bottom; label 'Drag rows onto folders'."
+    },
+    {
+      "filename": "EEM_06_duplicate.png",
+      "instructions": "Crop bottom unused area keep original y=0..725 full width. Single cyan arrow in right whitespace pointing to Duplicate button at x785..1085 y370..392. Label 'Duplicate supported menu items'. Preserve the button's actual disabled appearance and don't change UI availability."
+    },
+    {
+      "filename": "EEM_07_delete.png",
+      "instructions": "Crop to original y=0..725 full width. Single cyan arrow from empty right area to Delete button original x908..1085 y394..415. Label 'Remove selected items'. Keep all original controls."
+    },
+    {
+      "filename": "EEM_08_assign_icons.png",
+      "instructions": "Focus on selected tree row and small icon selector, crop fullwidth y=0..565; remove lower generator settings area. Cyan arrow pointing at small icon selector original x425..488 y237..299. Label 'Choose an icon for each item'. Second small arrow to icon beside selected Face A row left x53 y435. Label 'See the result in the tree'."
+    },
+    {
+      "filename": "EEM_09_auto_icon.png",
+      "instructions": "Focus on actual icon generator. Preserve title strip and crop to relevant right panel from x410 y175 to1395 y785, keeping exact UI. Add cyan arrow at generated cat preview and one at Snap and replace icon file button. Labels 'Preview your avatar as an icon' and 'Render and apply'. Show real style/background/outline choices."
+    },
+    {
+      "filename": "EEM_10_dissolve_after.png",
+      "instructions": "Crop bottom empty area y=0..725 full width. Arrow to highlighted ShapeModify row at x75 y678 and its 13/8 count at x379 y678. Label 'One fewer folder layer'. Keep collapsed after row collapsed; do not invent contents."
+    },
+    {
+      "filename": "EEM_10_dissolve_before.png",
+      "instructions": "Crop original y=0..725 full width keeping title. Cyan arrow at set A expanded folder row original x60 y457, and another arrow at Dissolve button original x775..1080 y395..416. Labels 'Folder with 8 items' and 'Move contents up one level'."
+    },
+    {
+      "filename": "EEM_10_dissolve.png",
+      "instructions": "This is an existing before-and-after composite. Preserve DISSOLVE, BEFORE and AFTER labels, crop bottom empty parts of both panels to originals y=0..495 approximately. Add cyan arrow to set A expanded folder on left and selected ShapeModify row on right. Labels 'Remove this folder layer' and 'Contents move up one level'. Don't invent unseen expanded contents on the after side."
+    },
+    {
+      "filename": "EEM_11_same_name_items.png",
+      "instructions": "Crop to left pane x=0..405 and original y=0..875 while preserving original title banner full original text. Highlight the two gesturePose folders visible at y369 and y677 using two cyan arrows anchored from blank right-side caption margin, labels 'Same name, different branch' and 'Choose the intended source'. Preserve both real rows and their hierarchy."
+    },
+    {
+      "filename": "EEM_12_name_formatting.png",
+      "instructions": "Crop original y=0..550 full width. Cyan arrows to Name rich-text input original x505 y261 and to colored Info child labels original x115 y457. Labels 'Edit rich-text names' and 'Preview formatting in the tree'. Don't alter raw markup."
+    },
+    {
+      "filename": "EEM_13_keyboard_navigation.png",
+      "instructions": "Focus on tree, preserve title and crop x=0..410 y=0..565. Add cyan arrow pointing to selected Face A row original y435. Small readable outside-UI caption 'Arrow keys: navigate | F2: rename | Ctrl+D: duplicate | Delete: remove'. Preserve UI unchanged."
+    },
+    {
+      "filename": "EEM_14_messages.png",
+      "instructions": "Crop original y=0..315 full width to emphasize visible warning strip and helpful instruction text. Cyan arrow at top warning strip y160, label 'Clear warnings while you work'. Do not invent a footer notification; it is not visible."
+    },
+    {
+      "filename": "EEM_15_snapshot_restore.png",
+      "instructions": "Crop to title and upper interface original y=0..565 fullwidth. Cyan arrow precisely at Snapshot dropdown original x63..135 y106. Label 'Save a baseline. Restore your edits.' Keep dropdown closed."
+    },
+    {
+      "filename": "EEM_16_structure_export_import.png",
+      "instructions": "Crop title and upper interface original y=0..565 fullwidth. Cyan arrow at Structure dropdown original x137..207 y106. Label 'Export and import menu layouts'. Keep dropdown closed."
+    },
+    {
+      "filename": "EEM_17_multi_select.png",
+      "instructions": "Crop original y=0..715 fullwidth. Point cyan arrow to menu tree selectable item rows under autoSet, avoid covering names. Label 'Ctrl-click or Shift-click to select multiple items'. Preserve single actual selection; do not fabricate a multi-selected state."
+    },
+    {
+      "filename": "EEM_18_bulk_actions.png",
+      "instructions": "Crop original y=0..715 fullwidth. Arrow to selectable item rows under autoSet and to Actions section with Move and Delete buttons. Caption 'Select multiple items, then apply bulk edits'. Preserve actual single-selection UI, do not add a bulk toolbar."
+    },
+    {
+      "filename": "EEM_19_gesture_manager.png",
+      "instructions": "Crop title and toolbar plus upper selected interface original y=0..325 fullwidth. Cyan arrow at large Enter Play-Mode button y132. Label 'Preview through Gesture Manager'. Leave button and original labels intact."
+    },
+    {
+      "filename": "EEM_20_debug_log.png",
+      "instructions": "Feature's debug log is NOT visible in this screenshot. Preserve exact original UI. Crop title and top tree/context original y=0..565 fullwidth. Add a clean small cyan-accented note outside the UI in a bottom caption band saying 'Optional developer diagnostics via DebugJSON'. Do not add a Debug JSON button or fictional log. No arrow to an unrelated control."
+    },
+    {
+      "filename": "EEM_21_menu_capacity_warning.png",
+      "instructions": "Focus crop on left pane x0..410 y0..745 preserving full original MENU CAPACITY title banner separately if needed. Cyan arrow at orange 9/8 badge original x380 y302 and another at warning strip y160. Labels 'Spot menus over 8 controls' and 'Capacity warning'."
+    },
+    {
+      "filename": "EEM_22_locate_source.png",
+      "instructions": "Crop original y=0..725 fullwidth. Cyan arrow at Locate source button x493..711 y395..415. Label 'Jump to the backing source'. Preserve selected tree item and source category."
+    },
+    {
+      "filename": "EEM_23_review_cleanup.png",
+      "instructions": "Cleanup review dialog is NOT visible in this screenshot. Crop original y=0..565 fullwidth preserving title and exact original UI. In added caption band outside UI add 'Review stale move and icon records before removal'. Do not add imaginary cleanup buttons, dialogs or arrows to unrelated controls."
+    },
+    {
+      "filename": "EEM_24_safe_package_editing.png",
+      "instructions": "Crop original y=0..725 fullwidth keeping title. Cyan arrow to Full Controller source category in Details at original x500..660 y469. Caption 'Private menu copies protect shared package assets'. Do not fabricate source asset path."
+    },
+    {
+      "filename": "EEM_25_prefab_editing.png",
+      "instructions": "Crop original y=0..725 fullwidth keeping title. Arrow at Rename Name field or move controls to emphasize editable settings. Caption 'Edit as prefab overrides. Keep prefab connections.' Preserve UI, don't fabricate hierarchy inspector."
+    },
+    {
+      "filename": "EEM_26_safe_snapshot_restore.png",
+      "instructions": "Crop original y=0..565 fullwidth keeping title. Cyan arrow at Snapshot dropdown x63..135 y106. Label 'Restore this avatar without rewriting shared menus'. Keep dropdown closed and don't invent a restore dialog."
+    },
+    {
+      "filename": "EEM_27_paths_and_safe_moves.png",
+      "instructions": "Focus original y=0..490 fullwidth preserving title. Cyan arrow to Path field original x570 y299 and one to Move... button x493..781 y381. Labels 'See the exact menu path' and 'Validate moves before saving'. Preserve exact path text."
+    }
+  ],
+  "recaptureRecommended": [
+    "EEM_06_duplicate.png (selected folder has Duplicate disabled)",
+    "EEM_10_dissolve_after.png (parent folder is collapsed)",
+    "EEM_17_multi_select.png (only one row is selected)",
+    "EEM_18_bulk_actions.png (bulk toolbar is not visible)",
+    "EEM_20_debug_log.png (debug controls/log are not visible)",
+    "EEM_23_review_cleanup.png (cleanup review dialog is not visible)"
+  ]
+}

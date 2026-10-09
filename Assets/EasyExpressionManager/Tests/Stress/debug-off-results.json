@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"success\":true,\"message\":\"Code executed successfully.\",\"data\":{\"result\":\"PASS DebugJSON false records no verification entries | debug entries=0\\nPASS DebugJSON false edit persists | name=Renamed\",\"compiler\":\"codedom\"}}"
+      }
+    ],
+    "structuredContent": {
+      "success": true,
+      "message": "Code executed successfully.",
+      "data": {
+        "result": "PASS DebugJSON false records no verification entries | debug entries=0\nPASS DebugJSON false edit persists | name=Renamed",
+        "compiler": "codedom"
+      }
+    },
+    "isError": false
+  }
+}

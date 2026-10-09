@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"success\":true,\"message\":\"Code executed successfully.\",\"data\":{\"result\":\"Removed disposable test assets and 3 remaining test avatar states; original scene unchanged.\",\"compiler\":\"codedom\"}}"
+      }
+    ],
+    "structuredContent": {
+      "success": true,
+      "message": "Code executed successfully.",
+      "data": {
+        "result": "Removed disposable test assets and 3 remaining test avatar states; original scene unchanged.",
+        "compiler": "codedom"
+      }
+    },
+    "isError": false
+  }
+}

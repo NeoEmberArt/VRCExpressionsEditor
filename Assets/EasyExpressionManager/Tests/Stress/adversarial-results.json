@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"success\":true,\"message\":\"Code executed successfully.\",\"data\":{\"result\":\"PASS Restore leaves updated shared package intact | package=UpdatedPackageItem\\nPASS Restore uses old data privately | restored=OldPackageItem warnings=0\\nPASS Native icon isolated | shared icon unchanged\\nPASS Native delete isolated | source=1 private=0\\nPASS 25 automatic snapshots bounded | auto=10 total=12 ms=2454\\nPASS Upload cyclic records does not block | permitted=True ms=1\\nPASS Null entries scan | completed\\nPASS Null entries snapshot | completed\\nMEASURE shared DAG depth=12 assets=13 rows=12286 ms=286 managed_bytes_delta=77336576\\nMEASURE shared DAG depth=14 assets=15 rows=49150 ms=1521 managed_bytes_delta=44097536\\nMEASURE shared DAG depth=16 assets=17 rows=196606 ms=6311 managed_bytes_delta=269578240\",\"compiler\":\"codedom\"}}"
+      }
+    ],
+    "structuredContent": {
+      "success": true,
+      "message": "Code executed successfully.",
+      "data": {
+        "result": "PASS Restore leaves updated shared package intact | package=UpdatedPackageItem\nPASS Restore uses old data privately | restored=OldPackageItem warnings=0\nPASS Native icon isolated | shared icon unchanged\nPASS Native delete isolated | source=1 private=0\nPASS 25 automatic snapshots bounded | auto=10 total=12 ms=2454\nPASS Upload cyclic records does not block | permitted=True ms=1\nPASS Null entries scan | completed\nPASS Null entries snapshot | completed\nMEASURE shared DAG depth=12 assets=13 rows=12286 ms=286 managed_bytes_delta=77336576\nMEASURE shared DAG depth=14 assets=15 rows=49150 ms=1521 managed_bytes_delta=44097536\nMEASURE shared DAG depth=16 assets=17 rows=196606 ms=6311 managed_bytes_delta=269578240",
+        "compiler": "codedom"
+      }
+    },
+    "isError": false
+  }
+}

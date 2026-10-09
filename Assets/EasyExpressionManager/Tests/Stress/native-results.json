@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"success\":true,\"message\":\"Code executed successfully.\",\"data\":{\"result\":\"PASS Repeated submenu scan | rows=4\\nPASS Native copy isolates other avatar | shared original=Toggle\\nPASS Repeated submenu aliases preserved | both aliases reference same private submenu\\nPASS Renamed alias rows synchronized | renamed aliases=2\\nPASS Stale action refused | native name=Renamed\\nPASS Injected failure rolls back | name=Left\\nPASS Self cycle terminates | rows=1, ms=0\\nPASS Copy preserves self cycle | clone self reference intact\\nPASS 2048 controls scan | rows=2048, ms=11\\nPASS Shared DAG expansion depth10 | 11 menu assets produce 3070 rows; ms=72\\nPASS Depth128 terminates | rows=128, ms=23\\nPASS Upload null avatar permits build | true\\nPASS Upload without records permits build | true\",\"compiler\":\"codedom\"}}"
+      }
+    ],
+    "structuredContent": {
+      "success": true,
+      "message": "Code executed successfully.",
+      "data": {
+        "result": "PASS Repeated submenu scan | rows=4\nPASS Native copy isolates other avatar | shared original=Toggle\nPASS Repeated submenu aliases preserved | both aliases reference same private submenu\nPASS Renamed alias rows synchronized | renamed aliases=2\nPASS Stale action refused | native name=Renamed\nPASS Injected failure rolls back | name=Left\nPASS Self cycle terminates | rows=1, ms=0\nPASS Copy preserves self cycle | clone self reference intact\nPASS 2048 controls scan | rows=2048, ms=11\nPASS Shared DAG expansion depth10 | 11 menu assets produce 3070 rows; ms=72\nPASS Depth128 terminates | rows=128, ms=23\nPASS Upload null avatar permits build | true\nPASS Upload without records permits build | true",
+        "compiler": "codedom"
+      }
+    },
+    "isError": false
+  }
+}

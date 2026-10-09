@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"success\":true,\"message\":\"Code executed successfully.\",\"data\":{\"result\":\"Unity=2022.3.22f1 compiling=False updating=False leftover_test_avatars=0 generated_test_folder=False\",\"compiler\":\"codedom\"}}"
+      }
+    ],
+    "structuredContent": {
+      "success": true,
+      "message": "Code executed successfully.",
+      "data": {
+        "result": "Unity=2022.3.22f1 compiling=False updating=False leftover_test_avatars=0 generated_test_folder=False",
+        "compiler": "codedom"
+      }
+    },
+    "isError": false
+  }
+}

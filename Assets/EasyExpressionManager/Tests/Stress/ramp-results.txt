@@ -1,0 +1,17 @@
+PASS Folder duplicate independent submenu | private root controls=5
+MEASURE moves=10 cumulative_ms=188
+MEASURE moves=20 cumulative_ms=590
+MEASURE moves=30 cumulative_ms=1258
+MEASURE moves=40 cumulative_ms=2565
+MEASURE moves=50 cumulative_ms=4195
+MEASURE moves=60 cumulative_ms=6682
+MEASURE moves=70 cumulative_ms=10965
+MEASURE moves=80 cumulative_ms=16493
+MEASURE moves=90 cumulative_ms=27413
+MEASURE moves=100 cumulative_ms=38152
+PASS 100 seeded mixed moves | completed=100 ms=38153
+PASS Dissolve after long move history F0 | accepted=True toggles=25 expected=25
+PASS Dissolve after long move history F1 | accepted=True toggles=25 expected=25
+PASS Dissolve after long move history F2 | accepted=True toggles=25 expected=25
+PASS Dissolve after long move history F3 | accepted=True toggles=25 expected=25
+PASS Dissolve after long move history Copy | accepted=True toggles=25 expected=25

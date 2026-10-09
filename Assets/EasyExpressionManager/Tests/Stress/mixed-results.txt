@@ -1,0 +1,6 @@
+PASS Folder duplicate independent submenu | private root controls=5
+PASS 25 seeded mixed moves | completed=25 ms=886
+PASS Full Controller rename isolates shared source | original=FCItem
+PASS Toggle rename preserves outer prefab | outer prefab connection
+PASS Toggle rename preserves nested clothing | nested prefab connection
+PASS Prefab toggle rename persisted | rescan finds EditedToggle

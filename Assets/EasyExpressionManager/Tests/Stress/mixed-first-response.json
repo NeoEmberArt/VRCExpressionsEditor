@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"success\":false,\"message\":null,\"data\":null}"
+      }
+    ],
+    "structuredContent": {
+      "success": false,
+      "message": null,
+      "data": null
+    },
+    "isError": false
+  }
+}
