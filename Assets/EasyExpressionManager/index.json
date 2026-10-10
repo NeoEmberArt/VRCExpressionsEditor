@@ -1,39 +1,66 @@
 {
-  "name": "NeoEmberArts VPM Repository",
-  "id": "com.neoemberarts.vpm",
-  "url": "https://raw.githubusercontent.com/NeoEmberArt/VRCExpressionsEditor/main/Assets/EasyExpressionManager/index.json",
-  "author": "authoranimation@gmail.com",
-  "packages": {
-    "com.neoemberarts.easy-expression-manager": {
-      "versions": {
-        "2.3.0": {
-          "name": "com.neoemberarts.easy-expression-manager",
-          "displayName": "Easy Expression Manager",
-          "version": "2.3.0",
-          "unity": "2022.3",
-          "description": "A Unity Editor tool for managing VRChat avatar expression menus in one structured view.",
-          "author": {
-            "name": "NeoEmberArts",
-            "email": "authoranimation@gmail.com",
-            "url": "https://github.com/NeoEmberArt"
-          },
-          "license": "MIT",
-          "repository": {
-            "type": "git",
-            "url": "https://github.com/NeoEmberArt/VRCExpressionsEditor.git"
-          },
-          "documentationUrl": "https://github.com/NeoEmberArt/VRCExpressionsEditor",
-          "changelogUrl": "https://github.com/NeoEmberArt/VRCExpressionsEditor/blob/main/CHANGELOG.md",
-          "vpmDependencies": {
-            "com.vrchat.avatars": "3.10.x"
-          },
-          "url": "https://github.com/NeoEmberArt/VRCExpressionsEditor/releases/download/v2.3.0/com.neoemberarts.easy-expression-manager-2.3.0.zip",
-          "zipSHA256": "1fe133bd944d79d91979b94deb9cf7a984bbcf9bec6d3cf456270ab6f8f55ef8",
-          "legacyFolders": {
-            "Assets/EasyExpressionManager/Editor": ""
-          }
-        }
-      }
-    }
-  }
+    "name":  "NeoEmberArts VPM Repository",
+    "id":  "com.neoemberarts.vpm",
+    "url":  "https://raw.githubusercontent.com/NeoEmberArt/VRCExpressionsEditor/main/Assets/EasyExpressionManager/index.json",
+    "author":  "authoranimation@gmail.com",
+    "packages":  {
+                     "com.neoemberarts.easy-expression-manager":  {
+                                                                      "versions":  {
+                                                                                       "2.3.0":  {
+                                                                                                     "name":  "com.neoemberarts.easy-expression-manager",
+                                                                                                     "displayName":  "Easy Expression Manager",
+                                                                                                     "version":  "2.3.0",
+                                                                                                     "unity":  "2022.3",
+                                                                                                     "description":  "A Unity Editor tool for managing VRChat avatar expression menus in one structured view.",
+                                                                                                     "author":  {
+                                                                                                                    "name":  "NeoEmberArts",
+                                                                                                                    "email":  "authoranimation@gmail.com",
+                                                                                                                    "url":  "https://github.com/NeoEmberArt"
+                                                                                                                },
+                                                                                                     "license":  "MIT",
+                                                                                                     "repository":  {
+                                                                                                                        "type":  "git",
+                                                                                                                        "url":  "https://github.com/NeoEmberArt/VRCExpressionsEditor.git"
+                                                                                                                    },
+                                                                                                     "documentationUrl":  "https://github.com/NeoEmberArt/VRCExpressionsEditor",
+                                                                                                     "changelogUrl":  "https://github.com/NeoEmberArt/VRCExpressionsEditor/blob/main/CHANGELOG.md",
+                                                                                                     "vpmDependencies":  {
+                                                                                                                             "com.vrchat.avatars":  "3.10.x"
+                                                                                                                         },
+                                                                                                     "url":  "https://github.com/NeoEmberArt/VRCExpressionsEditor/releases/download/v2.3.0/com.neoemberarts.easy-expression-manager-2.3.0.zip",
+                                                                                                     "zipSHA256":  "1fe133bd944d79d91979b94deb9cf7a984bbcf9bec6d3cf456270ab6f8f55ef8",
+                                                                                                     "legacyFolders":  {
+                                                                                                                           "Assets/EasyExpressionManager/Editor":  ""
+                                                                                                                       }
+                                                                                                 },
+                                                                                       "2.3.1":  {
+                                                                                                     "name":  "com.neoemberarts.easy-expression-manager",
+                                                                                                     "displayName":  "Easy Expression Manager",
+                                                                                                     "version":  "2.3.1",
+                                                                                                     "unity":  "2022.3",
+                                                                                                     "description":  "A Unity Editor tool for managing VRChat avatar expression menus in one structured view.",
+                                                                                                     "author":  {
+                                                                                                                    "name":  "NeoEmberArts",
+                                                                                                                    "email":  "authoranimation@gmail.com",
+                                                                                                                    "url":  "https://github.com/NeoEmberArt"
+                                                                                                                },
+                                                                                                     "license":  "MIT",
+                                                                                                     "repository":  {
+                                                                                                                        "type":  "git",
+                                                                                                                        "url":  "https://github.com/NeoEmberArt/VRCExpressionsEditor.git"
+                                                                                                                    },
+                                                                                                     "documentationUrl":  "https://github.com/NeoEmberArt/VRCExpressionsEditor",
+                                                                                                     "changelogUrl":  "https://github.com/NeoEmberArt/VRCExpressionsEditor/blob/main/Assets/EasyExpressionManager/CHANGELOG.md",
+                                                                                                     "vpmDependencies":  {
+                                                                                                                             "com.vrchat.avatars":  "3.10.x"
+                                                                                                                         },
+                                                                                                     "url":  "https://github.com/NeoEmberArt/VRCExpressionsEditor/releases/download/v2.3.1/com.neoemberarts.easy-expression-manager-2.3.1.zip",
+                                                                                                     "legacyFolders":  {
+                                                                                                                           "Assets/EasyExpressionManager/Editor":  ""
+                                                                                                                       },
+                                                                                                     "zipSHA256":  "13e4a0bba74a5d02720c99973bef7e8d09864a6588dc8aa10f5e6c086554751a"
+                                                                                                 }
+                                                                                   }
+                                                                  }
+                 }
 }
