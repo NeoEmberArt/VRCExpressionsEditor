@@ -65,6 +65,11 @@ public partial class EASYExpressionManager
             if (node == null || node == root) throw new System.InvalidOperationException("The item no longer exists. Rescan and try again.");
             GuardRenameCollision(node, newLeaf);
 
+            bool nativeOnlyFolderRename = node.IsFolderLike && IsNativeFolderNode(node) && !HasVrcfMoveSupport();
+            if (nativeOnlyFolderRename && combineFolders)
+                throw new System.InvalidOperationException(
+                    "Native folders cannot be combined without VRCFury. Choose Keep Separate or install VRCFury.");
+
             if (!node.IsFolderLike && node.sourceControl != null && node.hasManagedMove)
             {
                 MoveIndividualControl(node, PathOf(node.parent, true), newLeaf);
@@ -72,7 +77,8 @@ public partial class EASYExpressionManager
                 return;
             }
 
-            if (node.IsFolderLike && (string.IsNullOrEmpty(node.rawName) || separateFolder || combineFolders ||
+            if (node.IsFolderLike && !nativeOnlyFolderRename &&
+                (string.IsNullOrEmpty(node.rawName) || separateFolder || combineFolders ||
                 FindAllNodesAtPath(root, PathOf(node)).Count > 1))
             {
                 RenameFolderByMove(node, newLeaf, separateFolder);
@@ -91,6 +97,7 @@ public partial class EASYExpressionManager
                 return;
             }
 
+            GuardAmbiguousRenameReferences(node, oldPath);
 
             if (EEMPath.SegmentHasSeparator(newLeaf))
                 Debug.LogWarning($"[EASY] \"{newLeaf}\" contains a '/'. VRCFury will read that as a folder " +
@@ -107,7 +114,9 @@ public partial class EASYExpressionManager
 
             if (node.sourceControl != null && node.sourceMenu != null && !node.isFromFullController)
             {
-                EnsureWritableNativeMenu(node);
+                var menu = EnsureWritableNativeMenu(node);
+                if (!menu || node.sourceControl == null)
+                    throw new System.InvalidOperationException("The native rename target changed before it could be edited. Rescan and try again.");
                 Undo.RecordObject(node.sourceMenu, "Rename control");
                 node.sourceControl.name = newLeaf;
                 EditorUtility.SetDirty(node.sourceMenu);
@@ -115,12 +124,11 @@ public partial class EASYExpressionManager
             else if (node.isFromFullController && node.sourceControl != null)
             {
                 var writable = EnsureWritableFCMenu(node, out int idx);
-                if (writable != null && idx >= 0 && idx < writable.controls.Count)
-                {
-                    Undo.RecordObject(writable, "Rename control");
-                    writable.controls[idx].name = newLeaf;
-                    EditorUtility.SetDirty(writable);
-                }
+                if (writable == null || idx < 0 || idx >= writable.controls.Count)
+                    throw new System.InvalidOperationException("The Full Controller rename target could not be made writable. Rescan and try again.");
+                Undo.RecordObject(writable, "Rename control");
+                writable.controls[idx].name = newLeaf;
+                EditorUtility.SetDirty(writable);
             }
             else if (node.isFCPrefixFolder && node.fcPrefixGenerators.Count > 0)
             {
@@ -141,15 +149,16 @@ public partial class EASYExpressionManager
             {
                 var so = FreshSO(node.sourceObject);
                 var nameProp = so?.FindProperty("content.name");
-                if (nameProp?.propertyType == SerializedPropertyType.String && so.targetObject != null)
-                {
-                    Undo.RecordObject(so.targetObject, "Rename toggle");
-                    string cur = EEMPath.FromVrcf(nameProp.stringValue);
-                    nameProp.stringValue = EEMPath.ToVrcf(EEMPath.ReplaceLastSegment(cur, newLeaf));
-                    so.ApplyModifiedProperties();
-                    node.sourceObject = so;
-                    EditorUtility.SetDirty(so.targetObject);
-                }
+                if (nameProp?.propertyType != SerializedPropertyType.String || so.targetObject == null)
+                    throw new System.InvalidOperationException("The VRCFury rename target has no writable menu name. Rescan and try again.");
+                Undo.RecordObject(so.targetObject, "Rename toggle");
+                string cur = EEMPath.FromVrcf(nameProp.stringValue);
+                string renamed = EEMPath.ReplaceLastSegment(cur, newLeaf);
+                GuardAddressable(renamed, "rename VRCFury menu");
+                nameProp.stringValue = EEMPath.ToVrcf(renamed);
+                so.ApplyModifiedProperties();
+                node.sourceObject = so;
+                EditorUtility.SetDirty(so.targetObject);
             }
 
             // ── everything that referenced the old path ───────────────────────
@@ -163,10 +172,11 @@ public partial class EASYExpressionManager
             // clear pointer to check things afterward.
             if (FindAllNodesAtPath(root, oldPath).Count > 1)
             {
-                Debug.LogWarning($"[EASY] '{EEMPath.ToVrcf(oldPath)}' was ambiguous before this rename, so move/icon/" +
-                                 "prefix records referencing it were left untouched rather than risk updating the " +
-                                 "wrong duplicate's records. Check Records ⚠ in the toolbar after the rescan.");
-                NoteConsequence("skipped path-reference sweep — old path was ambiguous");
+                // The preflight above has already rejected every ambiguous
+                // rename with dependent path records. A source-only duplicate
+                // has nothing to rewrite, so it is safe to leave this sweep
+                // empty rather than inventing VRCFury semantics.
+                NoteConsequence("source-only duplicate; no dependent path references needed rewriting");
             }
             else
             {
@@ -201,6 +211,36 @@ public partial class EASYExpressionManager
         Undo.CollapseUndoOperations(grp);
         FlushRescan();
         Repaint();
+    }
+
+    /// A path record cannot identify which of two same-path rows it belongs to.
+    /// Refuse only the ambiguous, path-backed case; source-only duplicate
+    /// controls can still be renamed without changing another item's records.
+    void GuardAmbiguousRenameReferences(ExpressionNode node, string oldPath)
+    {
+        if (FindAllNodesAtPath(root, oldPath).Count <= 1) return;
+
+        bool HasPathReference(string path) => !string.IsNullOrEmpty(path) &&
+            (EEMPath.PathEq(path, oldPath) || EEMPath.IsAtOrUnder(path, oldPath));
+
+        bool hasMoveReference = ReadMoveRecords().Any(r => HasPathReference(r.from) || HasPathReference(r.to));
+        bool hasIconReference = EnumerateVrcfComponents().Select(e => e.comp).Any(comp =>
+        {
+            if (!comp) return false;
+            var so = new SerializedObject(comp); so.Update();
+            if (so.FindProperty("content.fromPath") != null) return false;
+            if (!TryOverrideIconProps(so, out _, out _, out string path)) return false;
+            return HasPathReference(EEMPath.FromVrcfControl(path));
+        });
+        bool hasVirtualReference = virtualFolderPaths.Any(HasPathReference);
+        bool hasPrefixReference = node != null && node.isFCPrefixFolder && node.fcPrefixGenerators.Count > 0;
+
+        if (!hasMoveReference && !hasIconReference && !hasVirtualReference && !hasPrefixReference) return;
+
+        throw new System.InvalidOperationException(
+            $"Rename blocked: '{EEMPath.ToVrcf(oldPath)}' resolves to multiple items and has dependent path records. " +
+            "Disambiguate the duplicate first so the correct MoveMenuItem, icon, Full Controller, or virtual-folder " +
+            "record can be updated.");
     }
 
     /// Rewrites the "prefix" field on every Full Controller entry this specific
@@ -253,6 +293,8 @@ public partial class EASYExpressionManager
                 string rewritten = EEMPath.RewriteSeg(curInternal, oldPath, newPath);
                 if (EEMPath.PathEq(rewritten, curInternal)) continue;
 
+                if (!string.IsNullOrEmpty(rewritten))
+                    GuardAddressable(EEMPath.Combine(rewritten, "__EEM_path_validation__"), "rewrite Full Controller prefix");
                 if (!changedHere) { Undo.RecordObject(comp, $"Rename Full Controller prefix \"{DisplayOf(node)}\""); changedHere = true; }
                 prefixProp.stringValue = EEMPath.ToVrcf(rewritten);
                 newGenerators.Add(new FCPrefixGenerator(so, EEMPath.ToVrcf(rewritten)));
@@ -263,11 +305,7 @@ public partial class EASYExpressionManager
 
         if (totalRewritten == 0)
         {
-            Debug.LogWarning($"[EASY] Renaming \"{DisplayOf(node)}\" didn't find a matching prefix entry to " +
-                             "rewrite on any of its tracked components. The row may show the new name until the " +
-                             "next scan, then revert — rescan to confirm.");
-            NoteConsequence("WARNING: no matching FC prefix entry found — rename may revert on next scan");
-            return;
+            throw new System.InvalidOperationException($"Renaming \"{DisplayOf(node)}\" found no matching Full Controller prefix entry; rename was rolled back.");
         }
 
         // Keep this node's own bookkeeping in sync with what we just wrote, so

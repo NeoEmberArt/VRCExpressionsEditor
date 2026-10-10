@@ -86,7 +86,7 @@ public partial class EASYExpressionManager : EditorWindow
     /// Used when developer.json is missing, has no VersionCode key, or the key
     /// is empty. Bump this alongside a real release; day-to-day version bumps
     /// for testing can just go in developer.json instead, no recompile needed.
-    public  const string PLUGIN_VERSION_FALLBACK = "2.3.0";
+    public  const string PLUGIN_VERSION_FALLBACK = "2.3.1";
 
     /// developer.json's VersionCode, when present, overrides the compiled-in
     /// fallback — same override pattern as DebugJSON, and re-checked the same

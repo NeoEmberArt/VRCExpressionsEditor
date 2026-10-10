@@ -13,6 +13,7 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 
 public partial class EASYExpressionManager
 {
+    static readonly HashSet<int> warnedUnsupportedVrcfModes = new HashSet<int>();
 
     void ScanVRCFury(Transform t, ExpressionNode rootNode)
     {
@@ -29,7 +30,20 @@ public partial class EASYExpressionManager
             var nameProp  = so.FindProperty("content.name");
             var menusProp = so.FindProperty("content.menus");
 
-            if (nameProp?.propertyType == SerializedPropertyType.String && !string.IsNullOrEmpty(nameProp.stringValue))
+            // Legacy VF.Model.Feature.Modes owns several modes and VRCFury
+            // migrates them into individual Toggle features. It is not safe to
+            // expose the legacy container as one deletable Toggle row.
+            if (IsLegacyVrcfModes(so))
+            {
+                WarnUnsupportedVrcfModes(so);
+                continue;
+            }
+
+            // VRCFury permits an empty label for a real menu item. Toggle only
+            // emits that item when a usable icon exists; Puppet emits its item
+            // directly. Keep the serialized checks here so blank non-menu
+            // features do not become phantom rows.
+            if (nameProp?.propertyType == SerializedPropertyType.String && ShouldScanVrcfNamedControl(so, nameProp))
                 ScanToggle(so, nameProp, rootNode);
             else if (menusProp != null && menusProp.isArray && menusProp.arraySize > 0)
                 ScanFullController(so, menusProp, rootNode);
@@ -37,10 +51,64 @@ public partial class EASYExpressionManager
         foreach (Transform child in t) ScanVRCFury(child, rootNode);
     }
 
+    bool ShouldScanVrcfNamedControl(SerializedObject so, SerializedProperty nameProp)
+    {
+        string rawName = nameProp?.stringValue ?? "";
+        if (!string.IsNullOrEmpty(rawName)) return true;
+
+        string featureName = VrcfFeatureName(so);
+        if (featureName == "Puppet") return true;
+        if (featureName != "Toggle") return false;
+
+        var enableProp = so.FindProperty("content.enableIcon");
+        var objRef = so.FindProperty("content.icon.objRef");
+        return enableProp != null && enableProp.boolValue &&
+               objRef?.objectReferenceValue is Texture2D;
+    }
+
+    string VrcfFeatureName(SerializedObject so)
+    {
+        var contentProp = so?.FindProperty("content");
+        if (contentProp == null || contentProp.propertyType != SerializedPropertyType.ManagedReference)
+            return "";
+
+        var feature = contentProp.managedReferenceValue;
+        if (feature != null) return feature.GetType().Name;
+
+        string serializedType = contentProp.managedReferenceFullTypename ?? "";
+        int lastDot = serializedType.LastIndexOf('.');
+        return lastDot >= 0 ? serializedType.Substring(lastDot + 1) : serializedType;
+    }
+
+    bool IsLegacyVrcfModes(SerializedObject so)
+    {
+        var contentProp = so?.FindProperty("content");
+        if (contentProp == null || contentProp.propertyType != SerializedPropertyType.ManagedReference)
+            return false;
+
+        var feature = contentProp.managedReferenceValue;
+        if (feature != null)
+            return feature.GetType().FullName == "VF.Model.Feature.Modes";
+
+        string serializedType = contentProp.managedReferenceFullTypename ?? "";
+        return serializedType.EndsWith("VF.Model.Feature.Modes", System.StringComparison.Ordinal);
+    }
+
+    void WarnUnsupportedVrcfModes(SerializedObject so)
+    {
+        var target = so?.targetObject;
+        int instanceId = target == null ? 0 : target.GetInstanceID();
+        if (instanceId != 0 && !warnedUnsupportedVrcfModes.Add(instanceId)) return;
+
+        string owner = target == null ? "an avatar object" : target.name;
+        Debug.LogWarning("[EASY] VRCFury legacy Modes was found on '" + owner +
+            "'. It is not scanned or deleted by Easy Expression Manager; " +
+            "VRCFury must migrate its individual modes into Toggle features.");
+    }
+
     void ScanToggle(SerializedObject so, SerializedProperty nameProp, ExpressionNode rootNode)
     {
         string vrcfPath = EEMPath.Clean(nameProp.stringValue);
-        if (string.IsNullOrEmpty(vrcfPath)) return;
 
         Texture2D icon = null;
         var enableProp = so.FindProperty("content.enableIcon");
@@ -50,7 +118,9 @@ public partial class EASYExpressionManager
             if (objRef?.objectReferenceValue is Texture2D t2d) icon = t2d;
         }
 
-        string internalPath = EEMPath.FromVrcf(vrcfPath);
+        // Preserve an empty control name as one empty segment instead of the
+        // root, matching VRCFury's NewMenuItem fallback for blank paths.
+        string internalPath = EEMPath.FromVrcfControl(vrcfPath);
         string[] parts = EEMPath.SplitPath(internalPath);
         if (parts.Length == 0) return;
 
@@ -133,7 +203,7 @@ public partial class EASYExpressionManager
                 parent = parent,
                 icon = c.icon
             };
-            if (c.subMenu != null)
+            if (c.type == VRCExpressionsMenu.Control.ControlType.SubMenu && c.subMenu != null)
                 BuildFullControllerMenu(node, c.subMenu, fcSO, entryIndex, thisChain, visited, route + "/" + menu.controls.IndexOf(c));
             if (node.IsFolderLike)
             {

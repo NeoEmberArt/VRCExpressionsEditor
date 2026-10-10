@@ -253,7 +253,8 @@ public partial class EASYExpressionManager
             {
                 var live = ResolveLiveNode(n);
                 if (live == null) throw new System.InvalidOperationException("A selected control changed during the icon operation; rescan before editing it.");
-                ApplyIconChange(live, icon);
+                if (!ApplyIconChange(live, icon))
+                    throw new System.InvalidOperationException("Bulk icon change cancelled; all icon changes were rolled back.");
                 RefreshUnnamedMovePreview();
             }
             // Bind selections to the copied controls before the final Scan

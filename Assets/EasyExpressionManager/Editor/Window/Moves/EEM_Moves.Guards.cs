@@ -13,12 +13,80 @@ public partial class EASYExpressionManager
     // GUARDS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /// A name containing a literal '/' cannot be addressed by VRCFury at all —
-    /// it would be read back as nesting. Refuse rather than write a path that
-    /// means something different from what the user sees.
+    /// Literal slashes are escaped for VRCFury. Refuse the remaining raw-name
+    /// cases its grammar cannot represent, rather than writing another target.
     void GuardAddressable(string internalPath, string opName)
     {
-        // Literal slashes are addressable using VRCFury's \/ escaping.
+        if (string.IsNullOrEmpty(internalPath)) return;
+
+        var encodedParts = EEMPath.SplitPath(internalPath);
+        if (encodedParts.Length == 0) return;
+
+        // Internal paths use .dup.N only for an ancestor folder selector. Do
+        // not feed that generated syntax to the raw-name encoder: resolve it
+        // to the actual folder name first. The final segment is always a
+        // literal VRCFury control name, so a final name such as "A.dup.1" is
+        // intentionally allowed.
+        var rawParts = new List<string>();
+        var parent = root;
+        for (int i = 0; i < encodedParts.Length; i++)
+        {
+            string part = encodedParts[i] ?? "";
+            bool ancestor = i < encodedParts.Length - 1;
+            string rawPart = part;
+
+            if (ancestor && parent != null)
+            {
+                int selector = part.IndexOf(".dup.", System.StringComparison.Ordinal);
+                if (selector >= 0)
+                {
+                    string folderName = part.Substring(0, selector);
+                    int ordinal;
+                    if (!int.TryParse(part.Substring(selector + 5), out ordinal) || ordinal < 0)
+                        RejectAddressable(internalPath, opName, "invalid duplicate-folder selector '" + part + "'");
+
+                    var folders = MatchVrcControls(parent.children, folderName, true);
+                    if (ordinal >= folders.Count)
+                        RejectAddressable(internalPath, opName,
+                            "duplicate-folder selector '" + part + "' does not resolve in the current menu");
+
+                    var selectedFolder = folders[ordinal];
+                    rawPart = selectedFolder.rawName ?? folderName;
+                    parent = selectedFolder;
+                }
+                else
+                {
+                    var folders = MatchVrcControls(parent.children, part, true);
+                    if (folders.Count == 1)
+                    {
+                        rawPart = folders[0].rawName ?? part;
+                        parent = folders[0];
+                    }
+                    else
+                    {
+                        // A missing/new or already-ambiguous parent cannot
+                        // provide a reliable raw identity. Preserve the
+                        // spelling and let the encoder reject only the
+                        // representations VRCFury truly cannot express.
+                        parent = null;
+                    }
+                }
+            }
+
+            rawParts.Add(rawPart);
+        }
+
+        string ignoredVrcfPath;
+        string reason;
+        if (!EEMPath.TryEncodeVrcfRawPath(rawParts, out ignoredVrcfPath, out reason))
+            RejectAddressable(internalPath, opName, reason);
+    }
+
+    void RejectAddressable(string internalPath, string opName, string reason)
+    {
+        string message = $"{opName} blocked: '{EEMPath.ToVrcf(internalPath)}' cannot be represented safely by VRCFury ({reason}).";
+        NoteConsequence("rejected unrepresentable VRCFury path: " + reason);
+        throw new System.InvalidOperationException(message);
     }
 
     /// Refuses to run any operation whose targeting or cleanup works off a path

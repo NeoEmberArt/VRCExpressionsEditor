@@ -25,6 +25,16 @@ public partial class EASYExpressionManager
         else menu.AddDisabledItem(new GUIContent("Duplicate"));
 
         menu.AddItem(new GUIContent("Move…"), false, () => OpenMoveDialog(n));
+        if (CanNativeReorder(n))
+        {
+            menu.AddSeparator("");
+            if (CanNativeReorder(n, -1))
+                menu.AddItem(new GUIContent("Move Up (Native)"), false, () => ReorderNativeSibling(n, -1));
+            else menu.AddDisabledItem(new GUIContent("Move Up (Native)"));
+            if (CanNativeReorder(n, 1))
+                menu.AddItem(new GUIContent("Move Down (Native)"), false, () => ReorderNativeSibling(n, 1));
+            else menu.AddDisabledItem(new GUIContent("Move Down (Native)"));
+        }
         if (CanDissolve(n)) menu.AddItem(new GUIContent("Dissolve Folder"), false, () => DissolveInteractive(n));
         menu.AddSeparator("");
 

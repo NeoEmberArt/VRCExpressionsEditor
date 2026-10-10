@@ -1,12 +1,20 @@
 # Easy Expression Manager
 
-**v2.3.0** — a Unity Editor window for managing VRChat avatar expression menus in one tree: native VRC menus, VRCFury Toggles, VRCFury Full Controllers, and plugin-only virtual menus.
+**v2.3.1** — a Unity Editor window for managing VRChat avatar expression menus in one tree: native VRC menus, VRCFury Toggles, VRCFury Full Controllers, and plugin-only virtual menus.
 
 Open with **Tools → Easy Expression Editor**.
 
 This project is distributed as the VPM package `com.neoemberarts.easy-expression-manager` and can be installed through the VRChat Creator Companion. VRCFury is optional: native VRChat expression menus work without it, while VRCFury-specific scanning and operations require VRCFury to be installed.
 
-The safety fixes and their verification results are recorded in [Tests/VALIDATION.md](Tests/VALIDATION.md). Virtual menus now participate in Undo, each avatar instance has separate persistent history, and restore tracks components created by the plugin. Moves use the installed VRCFury's path and merge rules, with dependency ordering applied before its avatar build preprocessor.
+Virtual menus participate in Undo, saved avatar instances have separate persistent history, and restore tracks components created by the plugin. Without VRCFury, ordinary native controls and folders can move directly between existing native menus, and native siblings can be reordered from the context menu. VRCFury-backed moves retain its path and merge rules.
+
+## What's new in 2.3.1
+
+- Native-only moves, sibling ordering, menu-capacity checks, and shared-menu scope warnings.
+- Safer snapshot validation, parameter-asset binding restoration, and reference remapping.
+- Lossless structure paths and safer duplicate matching.
+- Explicit failures and cancellation rollback; dissolve stops if its recovery snapshot fails.
+- Icon-only VRCFury control scanning and protection for unsupported legacy Modes.
 
 ---
 
@@ -19,7 +27,7 @@ The safety fixes and their verification results are recorded in [Tests/VALIDATIO
 - Fixed: a "delete at build" move record (blank To Path) no longer rewrites every other move record on the avatar.
 - **Keyboard navigation**: arrow keys move through the list like the Hierarchy (→/← open, close and step in/out of folders), Home/End jump to the ends. F2 renames, Delete deletes.
 - **Messages appear in a footer** at the bottom of the window instead of over the menu. Warnings (like an unresolved move record) stay until you dismiss them.
-- **Safer snapshot restore**: components are matched by stable or current-session identity, then by hierarchy and component order, then by a unique object name. Deleted components are recreated before their references are resolved. Plugin-created additions are removed; manual additions are kept and listed. The separate **Restore and remove untracked additions** action can remove duplicates from older versions, and also removes manual additions. New snapshots distinguish same-named siblings and menu subassets.
+- **Safer snapshot restore**: components are matched by stable or current-session identity, then by indexed hierarchy and component order. Ambiguous or missing targets are reported; unique object names alone are not trusted. Deleted components are recreated before their references are resolved. Plugin-created additions are removed; manual additions are kept and listed. The separate **Restore and remove untracked additions** action can also remove manual additions.
 - Fixed: dissolving a folder also removes that folder's own icon record.
 - Fixed: selecting or previewing an item no longer unpacks its prefab. VRCFury edits use prefab overrides, preserving the avatar and nested prefab connections. Renaming a folder only touches the toggles whose path really changes.
 
@@ -40,11 +48,16 @@ The safety fixes and their verification results are recorded in [Tests/VALIDATIO
 
 ## Installation
 
-Drop the `EasyExpressionManager` folder anywhere inside `Assets/`.
+Add the NeoEmberArts repository to VRChat Creator Companion:
 
-> **Upgrading from any earlier version:** delete the old `Editor/` folder entirely before copying in the new one. The internal file layout has changed more than once (a single file in v2.1.0, ten files in v2.2.0/v2.2.1, forty-odd smaller files as of v2.0.0) and leftover files from an older layout will cause duplicate-type compile errors.
+`https://raw.githubusercontent.com/NeoEmberArt/VRCExpressionsEditor/main/Assets/EasyExpressionManager/index.json`
 
-Requires VRChat SDK3 (Avatars) and VRCFury.
+Then add **Easy Expression Manager** to your avatar project in VCC.
+
+> **Upgrading a legacy Assets installation:** back up the project first and remove only its old plugin code when switching to VCC. Keep project Data and its `.meta` files. For an existing VPM installation, update through VCC; do not manually delete the installed package.
+
+Requires VRChat SDK3 (Avatars). VRCFury is optional. Package data and generated
+assets live under `Assets/`, outside the installed package.
 
 ---
 
@@ -76,13 +89,15 @@ EasyExpressionManager/
 │       ├── Structure/   structure export & import
 │       ├── Debug/       operation logging & verification
 │       └── GUI/          toolbar, rows, edit panel, events, context menu, cosmetics
-├── Tests/                standalone and isolated Unity regression runners
-└── Data/                 created on first use — snapshots, avatar state
+├── package.json          VPM manifest
+├── README.md
+├── CHANGELOG.md
+└── LICENSE
 ```
 
 The window is split across `partial class EASYExpressionManager` files. `Window/State/EEM_Window.Fields.cs` declares the `EditorWindow` base, and `Moves/EEM_MoveBuildOrder.cs` also declares the SDK build callback.
 
-`Data/` holds your snapshots and avatar state assets, including virtual menu definitions, component ownership, and kept-record warning choices. It lives with the project, so it survives an editor restart and travels with the repo. Keep it and its Unity `.meta` files together. Legacy virtual-menu JSON files are retained during migration.
+Project Data holds your snapshots and avatar state assets, including virtual menu definitions, component ownership, and kept-record warning choices. It is stored under `Assets/`, outside the package. Keep it and its Unity `.meta` files together. Save the avatar's scene before creating persistent history. Legacy virtual-menu JSON files are retained during migration; unsafe session-hash preferences are not guessed.
 
 ---
 
@@ -111,7 +126,7 @@ The window won't shrink below the width each design needs, and a floating window
 | `→` | Position is managed by a Move Menu Item |
 | `×N` | N separate components resolve to this same path |
 
-A folder's name turns **red** with a `⚠ N/8` counter when it holds more than 8 controls, because VRChat only shows 8 per page and spills the rest onto extra pages.
+A folder's name turns **red** with a `⚠ N/8` counter when it holds more than 8 controls. Native VRChat menus have an eight-control limit; EEM refuses native writes that exceed it. VRCFury may paginate generated menus, so its Full Controller source menus are treated separately.
 
 ---
 
@@ -120,7 +135,7 @@ A folder's name turns **red** with a `⚠ N/8` counter when it holds more than 8
 ### Snapshot / Restore
 `Snapshot ▾` in the toolbar.
 
-A **baseline** snapshot is taken automatically the first time you select an avatar, so there is always something to fall back to. Take more whenever you like. Automatic snapshots before Dissolve keep the newest 10 files within an 8 MB budget per avatar (the latest is always kept). Baselines and named snapshots do not rotate. Opening the window checks only the selected avatar?s history and known legacy identities, without parsing snapshots for other avatars.
+A **baseline** snapshot is attempted automatically when you select a saved avatar. Check that capture succeeded before relying on it. Take additional snapshots whenever you like. Automatic snapshots before Dissolve keep the newest 10 files within an 8 MB budget per avatar (the latest is always kept). Baselines and named snapshots do not rotate.
 
 Restore reconciles the captured components and menus:
 
@@ -136,7 +151,7 @@ Snapshots are JSON under `Data/Snapshots/<avatar-key>/`. Restore is a single Und
 ### Structure Export / Import
 `Structure ▾` in the toolbar.
 
-Export records where everything ended up. Import applies that layout to a *different* avatar, matching by name: exact path first, then a unique name match anywhere in the tree. Virtual menus the layout depends on are created automatically; anything the target avatar doesn't have is listed and skipped.
+Export records raw path segments, duplicate positions, and source/type identity. Import applies that layout to another avatar using compatible, unambiguous matches; it does not guess between duplicate items or reuse one item for multiple rows. Virtual menus the layout depends on are created automatically. Missing, ambiguous, or unsupported paths are listed and skipped. Legacy display-path exports cannot recover slash information that was already lost.
 
 Nothing is written until you review the plan and press **Apply Checked** — every row has a checkbox.
 
@@ -183,7 +198,7 @@ Turn off *Include full tree in every entry* if the log gets unwieldy.
 
 **Prefab connections are preserved.** VRCFury edits use serialized property overrides and Undo component operations, including on nested prefab instances.
 
-**Menu edits are private to the avatar.** Native menus and Full Controller menus are copied into `Assets/EasyExpressionManager_Generated/<avatar>/` before editing shared assets. Snapshot restore reconstructs private menu assets and repoints the avatar?s descriptor and VRCFury references, preserving shared package assets.
+**Menu copies are private to the avatar, not necessarily one branch.** Native menus and Full Controller menus are copied into `Assets/EasyExpressionManager_Generated/<avatar>/` before editing external assets. Internal shared submenu references remain shared; an edit warns when it affects more than one branch. Snapshot restore reconstructs private menu assets and repoints captured references. Use **Tools → Easy Expression Manager → Generated Asset Inventory** to inspect generated menu copies; delete only assets you have verified are unused.
 
 **The list follows external edits.** Inspector and hierarchy changes refresh the list automatically. If a change arrives while an action is pending, the action is refused and the list refreshed so it can be retried with current data.
 
@@ -192,6 +207,8 @@ Turn off *Include full tree in every entry* if the log gets unwieldy.
 **Cleanup is reviewed before removal.** Unresolved or redundant move and icon records are listed with their paths and owners. Cleanup checks records throughout the avatar, including manual ones. Review the list before removing them: some target menus that only exist at build time. Records that successfully applied before another move changed their paths are retained. Choosing **Keep them** retains the records and remembers that their warnings should be ignored, including after snapshot restore. Editing a kept record to target a different path makes its warning eligible again.
 
 **Paths follow VRCFury's matching rules.** Exact names take priority; case, spaces and rich-text fallback apply when no exact match exists. Literal `/` characters are escaped, and duplicate ancestor folders use `.dup.N` selectors. Final same-named controls can still be affected together by a VRCFury move or icon record.
+
+Raw ancestor names containing `.dup.` or ending in a backslash cannot be safely represented by VRCFury's path API. EEM refuses affected path-backed edits with an explanation. Native object-based operations do not depend on that grammar. Folder combination without VRCFury and moving native controls into plugin-only virtual folders are not supported.
 
 **Merged moves are checked before saving.** The plugin retains each control's original source and verifies that the proposed move records reproduce the requested layout. When a merged folder needs its existing move sequence preserved, the records keep that sequence. Returning to a vacated folder path may use temporary staging records; the temporary name is removed in the final menu.
 

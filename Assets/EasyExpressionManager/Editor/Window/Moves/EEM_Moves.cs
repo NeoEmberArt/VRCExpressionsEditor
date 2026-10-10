@@ -14,6 +14,69 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 
 public partial class EASYExpressionManager
 {
+    // VRChat's native expression menus accept at most eight controls. Keep
+    // this local to native writes; VRCFury-generated menus follow VRCFury's
+    // own build-time rules and must not be pre-empted by this guard.
+    const int NativeMenuControlCapacity = 8;
+
+    bool HasVrcfMoveSupport() => ConcreteVrcfType() != null && FindFeatureType("MoveMenuItem") != null;
+
+    bool IsNativeFolderNode(ExpressionNode node)
+    {
+        return node != null && node != root && node.IsFolderLike &&
+            !node.isFromFullController && node.sourceObject == null &&
+            node.sourceControl != null && node.sourceMenu != null &&
+            node.sourceControl.type == VRCExpressionsMenu.Control.ControlType.SubMenu &&
+            node.sourceControl.subMenu != null &&
+            !node.isVirtualFolder && !node.isVirtualIntermediate &&
+            !node.isFCPrefixFolder && !node.isMoveGeneratedFolder &&
+            !node.hasManagedMove && node.mergedSources.Count == 0;
+    }
+
+    bool IsOrdinaryNativeNode(ExpressionNode node)
+    {
+        if (node == null || node == root || string.IsNullOrEmpty(node.rawName) ||
+            node.isFromFullController || node.sourceObject != null ||
+            node.sourceControl == null || node.sourceMenu == null ||
+            node.isVirtualFolder || node.isVirtualIntermediate ||
+            node.isFCPrefixFolder || node.isMoveGeneratedFolder ||
+            node.hasManagedMove || node.mergedSources.Count > 0) return false;
+        // A source that is shown below a generated/merged parent is not a
+        // simple native row. Leave it to its existing path-based semantics.
+        return node.parent == root || IsNativeFolderNode(node.parent);
+    }
+
+    VRCExpressionsMenu NativeMenuForFolder(ExpressionNode folder)
+    {
+        if (folder == root)
+        {
+            var descriptor = avatar ? avatar.GetComponent<VRCAvatarDescriptor>() : null;
+            return descriptor ? descriptor.expressionsMenu : null;
+        }
+        return IsNativeFolderNode(folder) ? folder.sourceControl.subMenu : null;
+    }
+
+    void EnsureNativeMenuCanAppend(VRCExpressionsMenu menu, string operation)
+    {
+        if (menu != null && menu.controls.Count >= NativeMenuControlCapacity)
+            throw new System.InvalidOperationException(
+                $"Cannot {operation}: the destination native expression menu already has " +
+                $"{NativeMenuControlCapacity} controls, the VRChat limit.");
+    }
+
+    void ConfirmSharedNativeDestination(VRCExpressionsMenu destination, VRCExpressionsMenu source)
+    {
+        // Clone-on-write confirms the source scope, but appending into a
+        // different shared submenu also affects every destination branch.
+        if (!destination || destination == source) return;
+        var descriptor = avatar ? avatar.GetComponent<VRCAvatarDescriptor>() : null;
+        if (NativeMenuSharedWithinOwner(destination, descriptor) &&
+            !EditorUtility.DisplayDialog("Shared native destination",
+                "The destination submenu is shared by multiple branches. This move will add the item to every branch that shares it.",
+                "Move into all branches", "Cancel"))
+            throw new System.OperationCanceledException("Native move canceled because its destination menu is shared.");
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // COMMIT MOVE
     //
@@ -34,6 +97,15 @@ public partial class EASYExpressionManager
         if (string.IsNullOrEmpty(fromInternal)) return;
         fromInternal = EEMPath.Norm(fromInternal);
         toInternal   = EEMPath.Norm(toInternal);
+
+        // RemoveDissolvedFolder uses an empty destination to delete the now
+        // empty native submenu link. A project without VRCFury still needs
+        // that operation to work; do not fall through to MoveMenuItem lookup.
+        if (string.IsNullOrEmpty(toInternal) && IsNativeFolderNode(movingNode) && !HasVrcfMoveSupport())
+        {
+            RemoveNativeFolderLink(movingNode);
+            return;
+        }
 
         GuardAddressable(fromInternal, "move");
         if (!string.IsNullOrEmpty(toInternal)) GuardAddressable(toInternal, "move");

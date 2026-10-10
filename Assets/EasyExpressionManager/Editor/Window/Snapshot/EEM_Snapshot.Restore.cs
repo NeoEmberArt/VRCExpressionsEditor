@@ -13,6 +13,259 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 
 public partial class EASYExpressionManager
 {
+    static bool HasNonEmptyString(Dictionary<string, object> data, string key)
+    {
+        return data != null && data.TryGetValue(key, out var value) &&
+            value is string text && !string.IsNullOrWhiteSpace(text);
+    }
+
+    static bool IsJsonNumber(object value) =>
+        value is byte || value is sbyte || value is short || value is ushort ||
+        value is int || value is uint || value is long || value is ulong ||
+        value is float || value is double || value is decimal;
+
+    static bool HasValidAssetIdentity(Dictionary<string, object> data)
+    {
+        if (!HasNonEmptyString(data, "guid") || !HasNonEmptyString(data, "localId")) return false;
+        return long.TryParse(MiniJson.Str(data, "localId"), out _);
+    }
+
+    static bool IsReferenceDescriptor(object value)
+    {
+        if (value == null) return true;
+        var descriptor = value as Dictionary<string, object>;
+        if (descriptor == null) return false;
+        string kind = MiniJson.Str(descriptor, "kind");
+        if (kind == "nonasset") return HasNonEmptyString(descriptor, "snapshotId");
+        if (kind == "unresolved")
+            return HasNonEmptyString(descriptor, "instanceId") &&
+                int.TryParse(MiniJson.Str(descriptor, "instanceId"), out _);
+        if (kind == "asset" || (string.IsNullOrEmpty(kind) &&
+            !string.IsNullOrEmpty(MiniJson.Str(descriptor, "guid"))))
+            return HasValidAssetIdentity(descriptor);
+        if (kind == "sceneObject" || kind == "sceneComponent")
+            return HasNonEmptyString(descriptor, "type") &&
+                descriptor.TryGetValue("path", out var path) && path is string;
+        return false;
+    }
+
+    bool ValidateSnapshotPayload(Dictionary<string, object> data, out string error)
+    {
+        error = null;
+        if (data == null) { error = "the root value is not an object"; return false; }
+        if (!data.TryGetValue("format", out var format) || !(format is string) ||
+            !string.Equals((string)format, SNAPSHOT_FORMAT, System.StringComparison.Ordinal))
+        {
+            error = "unsupported or missing snapshot format";
+            return false;
+        }
+
+        bool legacySnapshot = !data.ContainsKey("pluginVersion");
+        if (data.ContainsKey("pluginVersion") && !HasNonEmptyString(data, "pluginVersion"))
+        {
+            error = "pluginVersion must be a non-empty string when present";
+            return false;
+        }
+        // Current snapshots always record the descriptor root. A pre-root
+        // snapshot can still restore its components/menus, but the caller must
+        // preserve the current native menu rather than guessing a root.
+        if (!legacySnapshot && !data.ContainsKey("nativeMenu"))
+        {
+            error = "current snapshot is missing nativeMenu";
+            return false;
+        }
+
+        foreach (string key in new[] { "virtualFolders", "vrcfComponents", "menuAssets" })
+        {
+            if (!data.TryGetValue(key, out var value) || !(value is List<object>))
+            {
+                error = "required array '" + key + "' is missing or malformed";
+                return false;
+            }
+        }
+        if (data.ContainsKey("avatarKey") && !(data["avatarKey"] is string))
+        {
+            error = "avatarKey must be a string when present";
+            return false;
+        }
+        if (data.ContainsKey("nativeMenu") && !IsReferenceDescriptor(data["nativeMenu"]))
+        {
+            error = "nativeMenu is malformed";
+            return false;
+        }
+        if (data.ContainsKey("expressionParameters") && !IsReferenceDescriptor(data["expressionParameters"]))
+        {
+            error = "expressionParameters is malformed";
+            return false;
+        }
+        if (data.ContainsKey("automatic") && !(data["automatic"] is bool))
+        {
+            error = "automatic must be a boolean when present";
+            return false;
+        }
+        if (data.ContainsKey("isBaseline") && !(data["isBaseline"] is bool))
+        {
+            error = "isBaseline must be a boolean when present";
+            return false;
+        }
+        foreach (string key in new[] { "label", "createdAt", "avatarName" })
+            if (data.ContainsKey(key) && !(data[key] is string) && data[key] != null)
+            {
+                error = key + " must be a string when present";
+                return false;
+            }
+
+        foreach (var folder in (List<object>)data["virtualFolders"])
+            if (!(folder is string)) { error = "virtualFolders contains a non-string entry"; return false; }
+
+        var componentEntries = (List<object>)data["vrcfComponents"];
+        foreach (var item in componentEntries)
+        {
+            var component = item as Dictionary<string, object>;
+            if (component == null) { error = "vrcfComponents contains a non-object entry"; return false; }
+            if (!component.TryGetValue("path", out var path) || !(path is string))
+            { error = "a VRCFury component is missing its path"; return false; }
+            if (!HasNonEmptyString(component, "typeName"))
+            { error = "a VRCFury component is missing typeName"; return false; }
+            if (!component.TryGetValue("order", out var order) || !IsJsonNumber(order))
+            { error = "a VRCFury component is missing its numeric order"; return false; }
+            if (!HasNonEmptyString(component, "json"))
+            { error = "a VRCFury component has empty serialized data"; return false; }
+            try
+            {
+                if (!(MiniJson.Parse(MiniJson.Str(component, "json")) is Dictionary<string, object>))
+                { error = "a VRCFury component contains invalid serialized JSON"; return false; }
+            }
+            catch (System.Exception ex)
+            { error = "a VRCFury component contains invalid serialized JSON: " + ex.Message; return false; }
+            if (!component.TryGetValue("refs", out var refs) || !(refs is Dictionary<string, object>))
+            { error = "a VRCFury component is missing its reference table"; return false; }
+            foreach (var reference in ((Dictionary<string, object>)refs).Values)
+                if (!IsReferenceDescriptor(reference))
+                { error = "a VRCFury component contains a malformed reference descriptor"; return false; }
+        }
+
+        var menuEntries = (List<object>)data["menuAssets"];
+        var menuKeys = new HashSet<string>();
+        foreach (var item in menuEntries)
+        {
+            var menu = item as Dictionary<string, object>;
+            if (menu == null) { error = "menuAssets contains a non-object entry"; return false; }
+            if (!menu.ContainsKey("controls") || !(menu["controls"] is List<object>))
+            { error = "a menu asset is missing its controls array"; return false; }
+            string menuKind = MiniJson.Str(menu, "kind");
+            if (menu.ContainsKey("kind") && menuKind != "asset" && menuKind != "nonasset")
+            { error = "a menu asset has an unsupported identity kind"; return false; }
+            if (!menu.ContainsKey("kind") && !menu.ContainsKey("guid") && !menu.ContainsKey("localId"))
+            { error = "a menu asset has no identity fields"; return false; }
+            if (menuKind == "nonasset" &&
+                !HasNonEmptyString(menu, "snapshotId"))
+            { error = "a non-asset menu is missing snapshotId"; return false; }
+            if (menuKind != "nonasset" && !HasValidAssetIdentity(menu))
+            { error = "an asset menu is missing a valid GUID/localId identity"; return false; }
+            if (menu.ContainsKey("name") && !(menu["name"] is string))
+            { error = "a menu asset has a non-string name"; return false; }
+            if (!menuKeys.Add(MenuDescriptorKey(menu)))
+            { error = "menuAssets contains duplicate identities"; return false; }
+
+            foreach (var controlItem in (List<object>)menu["controls"])
+            {
+                var control = controlItem as Dictionary<string, object>;
+                if (control == null) { error = "a menu contains a non-object control"; return false; }
+                if (!control.TryGetValue("name", out var controlName) || !(controlName is string))
+                { error = "a menu control is missing its string name"; return false; }
+                if (!control.TryGetValue("type", out var controlType) || !(controlType is string) ||
+                    !System.Enum.TryParse((string)controlType, out VRCExpressionsMenu.Control.ControlType parsedType) ||
+                    !System.Enum.IsDefined(typeof(VRCExpressionsMenu.Control.ControlType), parsedType))
+                { error = "a menu control has a missing or undefined type"; return false; }
+                if (!control.TryGetValue("style", out var style) || !IsJsonNumber(style))
+                { error = "a menu control is missing its numeric style"; return false; }
+                if (!control.TryGetValue("value", out var value) || !IsJsonNumber(value))
+                { error = "a menu control is missing its numeric value"; return false; }
+                if (!control.TryGetValue("parameter", out var parameterName) || !(parameterName is string))
+                { error = "a menu control is missing its string parameter"; return false; }
+                foreach (string referenceKey in new[] { "icon", "subMenu" })
+                    if (!control.TryGetValue(referenceKey, out var reference) || !IsReferenceDescriptor(reference))
+                    { error = "a menu control has missing or malformed " + referenceKey + " data"; return false; }
+                if (!control.TryGetValue("subParameters", out var subParameters) || !(subParameters is List<object>))
+                { error = "a menu control is missing its subParameters array"; return false; }
+                foreach (var parameter in (List<object>)subParameters)
+                    if (!(parameter is string))
+                    { error = "a menu control has a non-string subParameter"; return false; }
+                if (!control.TryGetValue("labels", out var labels) || !(labels is List<object>))
+                { error = "a menu control is missing its labels array"; return false; }
+                foreach (var labelItem in (List<object>)labels)
+                {
+                    var label = labelItem as Dictionary<string, object>;
+                    if (label == null || !label.TryGetValue("name", out var labelName) || !(labelName is string) ||
+                        !label.TryGetValue("icon", out var labelIcon) || !IsReferenceDescriptor(labelIcon))
+                    { error = "a menu control has malformed label data"; return false; }
+                }
+            }
+            if (menu.ContainsKey("parametersAsset") && !IsReferenceDescriptor(menu["parametersAsset"]))
+            { error = "a menu has malformed parametersAsset data"; return false; }
+        }
+
+        var menusByKey = menuEntries.Cast<Dictionary<string, object>>()
+            .ToDictionary(MenuDescriptorKey, entry => entry);
+        // Every submenu must point at a captured menu. This is checked before
+        // any restore mutation; cycles are valid and are handled by the graph
+        // walk below with a visited set.
+        foreach (var menu in menusByKey.Values)
+            foreach (var controlItem in (List<object>)menu["controls"])
+            {
+                var control = (Dictionary<string, object>)controlItem;
+                var submenu = MiniJson.Dict(control, "subMenu");
+                if (submenu != null && !menusByKey.ContainsKey(MenuDescriptorKey(submenu)))
+                {
+                    error = "a subMenu reference does not exist in menuAssets";
+                    return false;
+                }
+            }
+
+        // VRChat's native descriptor graph is limited to eight controls per
+        // menu. VRCFury Full Controller menus are allowed to exceed eight
+        // because VRCFury paginates/merges them; only enforce the limit for
+        // menus reachable from the explicit native descriptor root.
+        if (data.ContainsKey("nativeMenu") && data["nativeMenu"] != null)
+        {
+            var native = MiniJson.Dict(data, "nativeMenu");
+            if (native == null || !menusByKey.TryGetValue(MenuDescriptorKey(native), out var rootMenu))
+            {
+                error = "nativeMenu does not identify a menu in menuAssets";
+                return false;
+            }
+            {
+                var pending = new Stack<Dictionary<string, object>>();
+                var seen = new HashSet<string>();
+                pending.Push(rootMenu);
+                while (pending.Count > 0)
+                {
+                    var menu = pending.Pop();
+                    string key = MenuDescriptorKey(menu);
+                    if (!seen.Add(key)) continue;
+                    var controls = (List<object>)menu["controls"];
+                    if (controls.Count > 8)
+                    {
+                        error = "the native expression-menu graph contains a menu with more than 8 controls";
+                        return false;
+                    }
+                    foreach (var controlItem in controls)
+                    {
+                        var control = controlItem as Dictionary<string, object>;
+                        // An orphan reference on a non-SubMenu control is
+                        // preserved as snapshot data, not a buildable native
+                        // graph edge. Match the SDK/scanner traversal rule.
+                        var submenu = control != null && MiniJson.Str(control, "type") == "SubMenu"
+                            ? MiniJson.Dict(control, "subMenu") : null;
+                        if (submenu != null && menusByKey.TryGetValue(MenuDescriptorKey(submenu), out var child))
+                            pending.Push(child);
+                    }
+                }
+            }
+        }
+        return true;
+    }
 
     void RestoreSnapshotInteractive(string filePath, bool removeUntrackedAdditions = false)
     {
@@ -26,6 +279,13 @@ public partial class EASYExpressionManager
             return;
         }
         if (data == null) { EditorUtility.DisplayDialog("Snapshot unreadable", "Empty or malformed file.", "OK"); return; }
+        if (!ValidateSnapshotPayload(data, out string schemaError))
+        {
+            EditorUtility.DisplayDialog("Snapshot rejected",
+                "This snapshot was not changed because its schema is incomplete or unsupported:\n\n" +
+                schemaError, "OK");
+            return;
+        }
 
         string label = MiniJson.Str(data, "label", "(no label)");
         string when  = MiniJson.Str(data, "createdAt", "?");
@@ -46,7 +306,22 @@ public partial class EASYExpressionManager
         // sessions.
         string snapshotKey = MiniJson.Str(data, "avatarKey", "");
         string currentKey  = AvatarKey();
-        if (!string.IsNullOrEmpty(snapshotKey) && !string.IsNullOrEmpty(currentKey) && snapshotKey != currentKey)
+        bool missingSnapshotIdentity = string.IsNullOrWhiteSpace(snapshotKey);
+        bool missingCurrentIdentity = string.IsNullOrWhiteSpace(currentKey);
+        if (missingSnapshotIdentity || missingCurrentIdentity)
+        {
+            string reason = missingSnapshotIdentity && missingCurrentIdentity
+                ? "The snapshot and the currently selected avatar both lack a durable identity."
+                : missingSnapshotIdentity
+                    ? "The snapshot does not record which avatar it came from."
+                    : "The currently selected avatar has no durable identity (it may be an unsaved scene object).";
+            Debug.LogWarning("[EASY] Snapshot restore has missing avatar identity; explicit confirmation is required.");
+            if (!EditorUtility.DisplayDialog("Snapshot identity is missing",
+                $"\"{label}\" (taken {when}) cannot be matched safely. {reason} " +
+                "Object references may resolve against the wrong hierarchy. Continue only if you have verified the target avatar manually.",
+                "Restore Anyway", "Cancel")) return;
+        }
+        else if (!string.IsNullOrEmpty(currentKey) && snapshotKey != currentKey)
         {
             Debug.LogWarning($"[EASY] Snapshot avatar-key mismatch: this snapshot was taken from key " +
                              $"'{snapshotKey}' but the currently selected avatar's key is '{currentKey}'. " +
@@ -70,6 +345,14 @@ public partial class EASYExpressionManager
                 : "Components created by this tool since the snapshot are removed; other VRCFury components added since are kept and listed.\n\n") +
             "Undo with Ctrl+Z.",
             "Restore", "Cancel")) return;
+
+        if (!data.ContainsKey("nativeMenu"))
+        {
+            Debug.LogWarning("[EASY] Legacy snapshot has no nativeMenu; the current descriptor menu will be preserved.");
+            if (!EditorUtility.DisplayDialog("Legacy snapshot: native menu preserved",
+                "This older snapshot has no recorded native expression-menu root. Its native descriptor menu will not be changed; only captured menu assets and components will be restored.",
+                "Continue", "Cancel")) return;
+        }
 
         SnapshotExpansionStates(root);
         Undo.IncrementCurrentGroup();
@@ -126,8 +409,13 @@ public partial class EASYExpressionManager
     }
 
     readonly Dictionary<string, VRCExpressionsMenu> restoredMenuCopies = new Dictionary<string, VRCExpressionsMenu>();
-    static string MenuDescriptorKey(Dictionary<string, object> descriptor) =>
-        MiniJson.Str(descriptor, "guid") + ":" + MiniJson.Str(descriptor, "localId");
+    static string MenuDescriptorKey(Dictionary<string, object> descriptor)
+    {
+        if (descriptor == null) return "";
+        if (MiniJson.Str(descriptor, "kind") == "nonasset")
+            return "nonasset:" + MiniJson.Str(descriptor, "snapshotId");
+        return MiniJson.Str(descriptor, "guid") + ":" + MiniJson.Str(descriptor, "localId");
+    }
 
     void RestoreMenuAssets(Dictionary<string, object> data, List<string> problems)
     {
@@ -191,18 +479,17 @@ public partial class EASYExpressionManager
         }
         var descriptor = avatar.GetComponent<VRCAvatarDescriptor>();
         if (!descriptor) return;
-        Dictionary<string, object> native = MiniJson.Dict(data, "nativeMenu");
         if (!data.ContainsKey("nativeMenu"))
         {
-            // Legacy captures enumerate the native root first, but have no explicit root.
-            // Prefer a matching current asset; otherwise use that first entry only
-            // when the avatar currently has a native menu.
-            native = descriptor.expressionsMenu ? AssetRefDescriptor(descriptor.expressionsMenu) : null;
-            if (native != null && !restoredMenuCopies.ContainsKey(MenuDescriptorKey(native)))
-                native = MiniJson.List(data, "menuAssets").FirstOrDefault() as Dictionary<string, object>;
+            problems.Add("legacy snapshot has no nativeMenu; the current avatar native menu was preserved");
+            return;
         }
-        Undo.RecordObject(descriptor, "Restore native menu reference");
+        Dictionary<string, object> native = MiniJson.Dict(data, "nativeMenu");
+        Undo.RecordObject(descriptor, "Restore avatar expression references");
         descriptor.expressionsMenu = ResolveMenuReference<VRCExpressionsMenu>(native, "native menu", problems);
+        if (data.ContainsKey("expressionParameters"))
+            descriptor.expressionParameters = ResolveMenuReference<VRCExpressionParameters>(
+                MiniJson.Dict(data, "expressionParameters"), "avatar expression parameters", problems);
         PrefabUtility.RecordPrefabInstancePropertyModifications(descriptor);
         EditorUtility.SetDirty(descriptor);
     }
@@ -222,15 +509,15 @@ public partial class EASYExpressionManager
     // certain first:
     //   1. stable id (GlobalObjectId) — survives renames and moves
     //   2. hierarchy path + type + order — the original rule
-    //   3. object name + type + order, when exactly one object fits — survives
-    //      an unpacked prefab or a moved/renamed parent
+    // Name-only fallback is deliberately not used: a unique name can still
+    // identify an unrelated object after an avatar edit.
     // Matched components are rewritten to the snapshot's contents.
     //
     // Unmatched plugin additions and legacy manager records are removed.
     // Untracked additions are kept unless exact restore was selected.
     //
     // Snapshot components with no live match are re-created on their object,
-    // found by stable id, path, or a unique name.
+    // found by stable object id or exact hierarchy/path only.
 
     class SnapComp
     {
@@ -251,7 +538,7 @@ public partial class EASYExpressionManager
             return component.GetInstanceID() == instance;
         // On an unchanged saved object, a different stable component id means
         // this is a replacement. After prefab unpacking the object id changes,
-        // so hierarchy/name fallback remains available.
+        // so exact hierarchy/path fallback remains available.
         return string.IsNullOrEmpty(snap.gid) || string.IsNullOrEmpty(snap.objGid) ||
             StableId(component.gameObject) != snap.objGid || StableId(component) == snap.gid;
     }
@@ -301,25 +588,6 @@ public partial class EASYExpressionManager
             if (sc != null) { matched[l.comp] = sc; sc.used = true; }
         }
 
-        // 3 — object name + type + order, only when it's unambiguous on both sides
-        foreach (var l in live)
-        {
-            if (matched.ContainsKey(l.comp)) continue;
-            string name = l.comp.gameObject.name;
-            var cands = snaps.Where(x => !x.used && x.objName == name && x.typeName == l.typeName && x.order == l.order &&
-                CanUseSnapshotFallback(l.comp, x)).ToList();
-            if (cands.Count > 1)
-            {
-                string parent = l.comp.transform.parent ? l.comp.transform.parent.name : "";
-                cands = cands.Where(x => x.parentName == parent).ToList();
-            }
-            if (cands.Count != 1) continue;
-            bool liveUnique = live.Count(o => !matched.ContainsKey(o.comp) && o.comp.gameObject.name == name &&
-                                              o.typeName == l.typeName && o.order == l.order) == 1;
-            if (!liveUnique) continue;
-            matched[l.comp] = cands[0]; cands[0].used = true;
-        }
-
         // apply matches; settle the rest
         var kept = new List<string>();
         foreach (var l in live)
@@ -362,22 +630,16 @@ public partial class EASYExpressionManager
         foreach (var pair in matched) ApplyComponentJson(pair.Key, pair.Value.data, problems);
     }
 
-    /// The object a snapshot component belongs on: stable id, then path, then a
-    /// unique object with the same name (preferring the same parent name).
+    /// The object a snapshot component belongs on: stable id, then exact
+    /// hierarchy/path. A name-only fallback is intentionally not used because
+    /// a unique name can still belong to an unrelated object after edits.
     Transform LocateSnapshotObject(SnapComp sc)
     {
         if (!string.IsNullOrEmpty(sc.objGid) && FromStableId(sc.objGid) is GameObject g && avatar &&
             g.transform.IsChildOf(avatar.transform))
             return g.transform;
 
-        var t = ResolveHierarchy(sc.data) ?? FindTransformByRelativePath(sc.path);
-        if (t != null) return t;
-
-        if (!avatar || string.IsNullOrEmpty(sc.objName)) return null;
-        var same = avatar.GetComponentsInChildren<Transform>(true).Where(x => x.name == sc.objName).ToList();
-        if (same.Count > 1 && !string.IsNullOrEmpty(sc.parentName))
-            same = same.Where(x => x.parent && x.parent.name == sc.parentName).ToList();
-        return same.Count == 1 ? same[0] : null;
+        return ResolveHierarchy(sc.data) ?? FindTransformByRelativePath(sc.path);
     }
 
     /// Move / icon records this tool writes. Only these are removed when they

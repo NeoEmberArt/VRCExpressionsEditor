@@ -107,6 +107,7 @@ public partial class EASYExpressionManager
             var matches = FindAllNodesAtPath(root, curInternal);
             if (matches.Count == 0 || matches.Count > 1 &&
                 !matches.All(n => bulkMoveSourceKeys.Contains(n.stableKey))) continue;
+            GuardAddressable(rewritten, "rewrite icon override path");
             Undo.RecordObject(comp, "Update Override Menu Icon path");
             pp.stringValue = EEMPath.ToVrcf(rewritten);
             so.ApplyModifiedProperties();
@@ -138,6 +139,8 @@ public partial class EASYExpressionManager
                 string cur = EEMPath.FromVrcf(prefixProp.stringValue ?? "");
                 string rewritten = EEMPath.RewriteSeg(cur, oldPath, newPath);
                 if (EEMPath.PathEq(rewritten, cur)) continue;
+                if (!string.IsNullOrEmpty(rewritten))
+                    GuardAddressable(EEMPath.Combine(rewritten, "__EEM_path_validation__"), "rewrite Full Controller prefix");
                 if (!changedHere) { Undo.RecordObject(comp, "Update Full Controller prefix"); changedHere = true; }
                 prefixProp.stringValue = EEMPath.ToVrcf(rewritten);
             }
@@ -161,13 +164,16 @@ public partial class EASYExpressionManager
             if (n.sourceObject == null) continue;
             // look first (read-only); only unpack + edit toggles that actually change
             var peek = ReadSO(n.sourceObject)?.FindProperty("content.name");
-            if (peek?.propertyType != SerializedPropertyType.String) continue;
+            if (peek?.propertyType != SerializedPropertyType.String)
+                throw new System.InvalidOperationException("A descendant VRCFury menu name could not be read; rescan before renaming this folder.");
             string cur = EEMPath.FromVrcf(peek.stringValue);
             string updated = EEMPath.RewriteSeg(cur, oldPrefix, newPrefix);
             if (EEMPath.PathEq(updated, cur)) continue;
+            GuardAddressable(updated, "rewrite descendant VRCFury path");
             var so = FreshSO(n.sourceObject);
             var nameProp = so?.FindProperty("content.name");
-            if (nameProp?.propertyType != SerializedPropertyType.String) continue;
+            if (nameProp?.propertyType != SerializedPropertyType.String || so.targetObject == null)
+                throw new System.InvalidOperationException("A descendant VRCFury menu name could not be written; the folder rename was cancelled.");
             if (so.targetObject != null) Undo.RecordObject(so.targetObject, "Rewrite Fury menu path");
             nameProp.stringValue = EEMPath.ToVrcf(updated);
             so.ApplyModifiedProperties();

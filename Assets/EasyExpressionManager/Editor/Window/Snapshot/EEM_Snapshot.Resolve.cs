@@ -54,6 +54,16 @@ public partial class EASYExpressionManager
         if (string.IsNullOrEmpty(kind) && !string.IsNullOrEmpty(MiniJson.Str(d, "guid")))
             kind = "asset";
 
+        if (kind == "nonasset")
+        {
+            // Non-asset menus only exist as the private copies allocated by
+            // RestoreMenuAssets. They must resolve through the snapshot key;
+            // there is no AssetDatabase identity to fall back to.
+            return restoredMenuCopies.TryGetValue(MenuDescriptorKey(d), out var privateMenu)
+                ? privateMenu
+                : null;
+        }
+
         if (kind == "asset")
         {
             if (restoredMenuCopies.TryGetValue(MenuDescriptorKey(d), out var privateMenu)) return privateMenu;
@@ -95,6 +105,7 @@ public partial class EASYExpressionManager
         return null;
     }
 
+
     Transform FindTransformByRelativePath(string relPath)
     {
         if (!avatar) return null;
@@ -111,16 +122,24 @@ public partial class EASYExpressionManager
 
     string RemapInstanceIds(string json, Dictionary<string, object> refs, List<string> problems)
     {
-        if (string.IsNullOrEmpty(json) || refs == null || refs.Count == 0) return json;
+        if (string.IsNullOrEmpty(json)) return json;
         return InstanceIdPattern.Replace(json, m =>
         {
             string idStr = m.Groups[1].Value;
-            if (!refs.TryGetValue(idStr, out var descObj)) return m.Value;
+            if (!int.TryParse(idStr, out int id) || id == 0) return m.Value;
+            if (refs == null || !refs.TryGetValue(idStr, out var descObj))
+            {
+                problems.Add("snapshot did not record a stable descriptor for instanceID " + idStr +
+                    "; the reference was cleared during restore");
+                return "\"instanceID\": 0";
+            }
             var resolved = ResolveDescriptor(descObj as Dictionary<string, object>);
             if (resolved == null)
             {
                 var d = descObj as Dictionary<string, object>;
-                problems.Add("could not re-link reference to " + MiniJson.Str(d, "name", "(unknown)"));
+                string detail = MiniJson.Str(d, "name", "instanceID " + idStr);
+                if (MiniJson.Str(d, "kind") == "unresolved") detail += " (no stable identity was captured)";
+                problems.Add("could not re-link reference to " + detail);
                 return "\"instanceID\": 0";
             }
             return "\"instanceID\": " + resolved.GetInstanceID();

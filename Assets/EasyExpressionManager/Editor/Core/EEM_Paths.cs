@@ -151,6 +151,53 @@ internal static class EEMPath
     public static string FromVrcfControl(string vrcfPath) =>
         string.IsNullOrEmpty(vrcfPath) ? JoinPath(new[] { "" }) : FromVrcf(vrcfPath);
 
+    /// Returns true when a raw menu name contains syntax reserved by VRCFury
+    /// for selecting a duplicate ancestor folder. This is deliberately about a
+    /// raw name, not an already-generated EEM path: a generated "Name.dup.1"
+    /// selector is valid, while a literal raw folder with that spelling cannot
+    /// be addressed through VRCFury's path API.
+    public static bool IsVrcfReservedAncestorSegment(string rawSegment) =>
+        !string.IsNullOrEmpty(rawSegment) &&
+        rawSegment.IndexOf(".dup.", System.StringComparison.Ordinal) >= 0;
+
+    /// Encodes raw menu-name segments using the installed VRCFury path grammar.
+    /// VRCFury treats a backslash immediately before the next path separator as
+    /// the escape sequence for a literal slash. A raw ancestor ending in '\\'
+    /// therefore cannot be represented when another segment follows. Raw
+    /// ancestor names containing '.dup.' are also rejected because VRCFury
+    /// reserves that spelling for duplicate-folder selectors. A final control
+    /// named '.dup.N' remains valid and literal; callers moving a submenu must
+    /// reject that case separately because submenu destinations are ancestor
+    /// paths in VRCFury.
+    public static bool TryEncodeVrcfRawPath(IEnumerable<string> rawParts,
+                                             out string vrcfPath,
+                                             out string reason)
+    {
+        var parts = (rawParts ?? Enumerable.Empty<string>())
+            .Select(part => part ?? "")
+            .ToList();
+        for (int i = 0; i < parts.Count - 1; i++)
+        {
+            string part = parts[i];
+            if (IsVrcfReservedAncestorSegment(part))
+            {
+                vrcfPath = null;
+                reason = "The ancestor name '" + part + "' contains VRCFury's reserved .dup. selector syntax.";
+                return false;
+            }
+            if (part.EndsWith("\\", System.StringComparison.Ordinal))
+            {
+                vrcfPath = null;
+                reason = "The ancestor name '" + part + "' ends in a backslash and cannot be represented in a VRCFury path.";
+                return false;
+            }
+        }
+
+        vrcfPath = string.Join("/", parts.Select(part => part.Replace("/", "\\/")));
+        reason = null;
+        return true;
+    }
+
     // ── comparison ────────────────────────────────────────────────────────────
 
     public static bool PathEq(string a, string b) =>

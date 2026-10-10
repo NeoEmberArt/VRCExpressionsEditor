@@ -256,12 +256,73 @@ public partial class EASYExpressionManager
         foreach (var part in displayPath.Split('/'))
         {
             if (string.IsNullOrEmpty(part)) continue;
-            var found = cur.children.Find(x =>
-                string.Equals(DisplayOf(x), part, System.StringComparison.OrdinalIgnoreCase));
-            if (found == null) return null;
-            cur = found;
+            var matches = cur.children.Where(x =>
+                string.Equals(DisplayOf(x), part, System.StringComparison.OrdinalIgnoreCase)).ToList();
+            // A display path is only a legacy, human-readable key. Never pick
+            // the first duplicate silently; structured structure exports use
+            // raw names and ordinals instead.
+            if (matches.Count != 1) return null;
+            cur = matches[0];
         }
         return cur == treeRoot ? null : cur;
+    }
+
+    /// The ordinal used by a structured structure export for a folder. This
+    /// follows VRCFury's exact-first/normalized fallback matching, but keeps
+    /// the ordinal as data instead of encoding it into a path segment. That
+    /// preserves literal names containing ".dup." for native identity while
+    /// retaining the installed VRCFury semantics when a path is eventually
+    /// written to VRCFury.
+    int StructureFolderOrdinalOf(ExpressionNode node)
+    {
+        if (node == null || node.parent == null || !node.IsFolderLike) return 0;
+        var matches = MatchVrcControls(node.parent.children, node.rawName, true);
+        int index = matches.IndexOf(node);
+        return index < 0 ? 0 : index;
+    }
+
+    /// Resolves a structured raw-name path. Ancestors use explicit folder
+    /// ordinals; the final segment intentionally returns every same-name
+    /// control/folder. This is deliberately different from VRCFury's ancestor
+    /// `.dup.N` parsing: VRCFury treats the final control name literally.
+    List<ExpressionNode> FindStructurePathMatches(ExpressionNode treeRoot,
+                                                   IList<string> rawSegments,
+                                                   IList<int> folderOrdinals)
+    {
+        if (treeRoot == null || rawSegments == null || rawSegments.Count == 0)
+            return new List<ExpressionNode>();
+
+        var parent = treeRoot;
+        for (int i = 0; i < rawSegments.Count - 1; i++)
+        {
+            var folders = MatchVrcControls(parent.children, rawSegments[i], true);
+            int ordinal = folderOrdinals != null && i < folderOrdinals.Count
+                ? folderOrdinals[i] : 0;
+            if (ordinal < 0 || ordinal >= folders.Count) return new List<ExpressionNode>();
+            parent = folders[ordinal];
+        }
+        return MatchVrcControls(parent.children, rawSegments[rawSegments.Count - 1]);
+    }
+
+    /// Resolves a structured folder path for a destination. A missing/invalid
+    /// ordinal returns null rather than silently selecting a different folder.
+    ExpressionNode NodeByStructureFolderPath(ExpressionNode treeRoot,
+                                              IList<string> rawSegments,
+                                              IList<int> folderOrdinals)
+    {
+        if (treeRoot == null) return null;
+        if (rawSegments == null || rawSegments.Count == 0) return treeRoot;
+
+        var current = treeRoot;
+        for (int i = 0; i < rawSegments.Count; i++)
+        {
+            var folders = MatchVrcControls(current.children, rawSegments[i], true);
+            int ordinal = folderOrdinals != null && i < folderOrdinals.Count
+                ? folderOrdinals[i] : 0;
+            if (ordinal < 0 || ordinal >= folders.Count) return null;
+            current = folders[ordinal];
+        }
+        return current;
     }
 
     List<string> CollectAllPaths(ExpressionNode node, bool foldersOnly = false)

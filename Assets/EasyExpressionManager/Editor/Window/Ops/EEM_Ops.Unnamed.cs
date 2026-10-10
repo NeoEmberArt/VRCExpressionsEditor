@@ -48,6 +48,8 @@ public partial class EASYExpressionManager
             destinationMenu = descriptor ? descriptor.expressionsMenu : null;
             if (!destinationMenu) throw new InvalidOperationException("The native expression menu could not be resolved.");
             var target = string.IsNullOrEmpty(destination) ? root : NodeByFolderPath(root, destination);
+            if (target == null)
+                throw new InvalidOperationException("The native destination folder does not exist; refusing to move the control to the expression-menu root.");
             string nativePath = target == root ? "" : NativePathOf(target);
             foreach (var segment in EEMPath.SplitPath(nativePath))
             {
@@ -63,6 +65,7 @@ public partial class EASYExpressionManager
                     c.type == VRCExpressionsMenu.Control.ControlType.SubMenu && c.name == name);
                 while (candidates.Count <= occurrence)
                 {
+                    EnsureNativeMenuCanAppend(destinationMenu, "create the native destination submenu");
                     var template = CreateInstance<VRCExpressionsMenu>();
                     template.name = string.IsNullOrEmpty(name) ? "Unnamed menu" : name;
                     VRCExpressionsMenu submenu;
@@ -92,6 +95,9 @@ public partial class EASYExpressionManager
             }
         }
         Undo.RecordObject(source, "Move unnamed control");
+        if (!node.isFromFullController && destinationMenu != source)
+            EnsureNativeMenuCanAppend(destinationMenu, "move the unnamed native control");
+        if (!node.isFromFullController) ConfirmSharedNativeDestination(destinationMenu, source);
         Undo.RecordObject(destinationMenu, "Move unnamed control");
         var moved = source.controls[index];
         source.controls.RemoveAt(index);
@@ -119,6 +125,24 @@ public partial class EASYExpressionManager
     {
         var destinationNode = string.IsNullOrEmpty(destination) ? root : NodeByFolderPath(root, destination);
         if (destinationNode == null) throw new InvalidOperationException("The destination folder no longer exists.");
+
+        // A named/blank native submenu must not enter the Fury-only temporary
+        // staging path. Use the real submenu control directly, including the
+        // duplicate-folder selector used by the tree model.
+        if (IsNativeFolderNode(node) && !HasVrcfMoveSupport())
+        {
+            string nativeFinalLeaf = renamedLeaf ?? node.rawName ?? "";
+            int nativeOrdinal = MatchVrcControls(destinationNode.children.Where(n => n != node), nativeFinalLeaf, true).Count;
+            if (string.IsNullOrEmpty(nativeFinalLeaf))
+                nativeFinalLeaf = ".dup." + nativeOrdinal;
+            else if (keepSeparate && nativeOrdinal > 0)
+                nativeFinalLeaf += ".dup." + nativeOrdinal;
+            string nativeDestinationPath = EEMPath.Combine(PathOf(destinationNode, true), nativeFinalLeaf);
+            MoveNativeNode(node, nativeDestinationPath);
+            RewriteIconOverridesForPathChange(PathOf(node), nativeDestinationPath);
+            return;
+        }
+
         bool destinationIsRoot = destinationNode == root;
         string oldLeaf = node.rawName ?? "";
         string oldPath = PathOf(node, true);

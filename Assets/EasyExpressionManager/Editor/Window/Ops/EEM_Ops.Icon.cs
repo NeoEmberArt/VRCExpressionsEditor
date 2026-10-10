@@ -25,24 +25,31 @@ public partial class EASYExpressionManager
         !(n.isFromFullController && n.sourceControl != null) &&
         n.sourceObject == null));
 
-    void ApplyIconChange(ExpressionNode node, Texture2D newIcon)
+    bool ApplyIconChange(ExpressionNode node, Texture2D newIcon)
     {
-        if (node == null) return;
+        if (node == null)
+            throw new System.InvalidOperationException("The icon target no longer exists. Rescan before editing it.");
         node.icon = newIcon;
         if (node.hasManagedIcon || node.mergedSources.Count > 0)
         {
             if (node.sameNameCount > 1 && !EditorUtility.DisplayDialog("Change every one?",
                 $"{node.sameNameCount} items here are called \"{DisplayOf(node)}\". VRCFury's icon override applies to all of them.",
-                "Change all", "Cancel")) { QueueRescan(); return; }
+                "Change all", "Cancel"))
+            {
+                QueueRescan();
+                return false;
+            }
             WriteOverrideMenuIcon(PathOf(node), newIcon);
-            return;
+            return true;
         }
 
         bool handledBySource = false;
 
         if (node.sourceControl != null && node.sourceMenu != null && !node.isFromFullController)
         {
-            EnsureWritableNativeMenu(node);
+            var menu = EnsureWritableNativeMenu(node);
+            if (!menu || node.sourceControl == null)
+                throw new System.InvalidOperationException("The native icon target changed before it could be edited. Rescan and try again.");
             Undo.RecordObject(node.sourceMenu, "Change Icon");
             node.sourceControl.icon = newIcon;
             EditorUtility.SetDirty(node.sourceMenu);
@@ -51,29 +58,30 @@ public partial class EASYExpressionManager
         else if (node.isFromFullController && node.sourceControl != null)
         {
             var writable = EnsureWritableFCMenu(node, out int idx);
-            if (writable != null && idx >= 0 && idx < writable.controls.Count)
-            {
-                Undo.RecordObject(writable, "Change Icon");
-                writable.controls[idx].icon = newIcon;
-                EditorUtility.SetDirty(writable);
-                handledBySource = true;
-            }
+            if (writable == null || idx < 0 || idx >= writable.controls.Count)
+                throw new System.InvalidOperationException("The Full Controller icon target changed before it could be edited. Rescan and try again.");
+            Undo.RecordObject(writable, "Change Icon");
+            writable.controls[idx].icon = newIcon;
+            EditorUtility.SetDirty(writable);
+            handledBySource = true;
         }
 
         if (node.sourceObject != null)
         {
             var so = FreshSO(node.sourceObject);
-            if (so?.targetObject != null)
-            {
-                Undo.RecordObject(so.targetObject, "Change Icon");
-                so.FindProperty("content.enableIcon")?.SetBool(newIcon != null);
-                var objRef = so.FindProperty("content.icon.objRef");
-                if (objRef != null) objRef.objectReferenceValue = newIcon;
-                so.ApplyModifiedProperties();
-                node.sourceObject = so;
-                EditorUtility.SetDirty(so.targetObject);
-                handledBySource = true;
-            }
+            if (so?.targetObject == null)
+                throw new System.InvalidOperationException("The VRCFury icon target changed before it could be edited. Rescan and try again.");
+            var enableIcon = so.FindProperty("content.enableIcon");
+            var objRef = so.FindProperty("content.icon.objRef");
+            if (enableIcon == null && objRef == null)
+                throw new System.InvalidOperationException("The VRCFury icon target has no writable icon properties.");
+            Undo.RecordObject(so.targetObject, "Change Icon");
+            enableIcon?.SetBool(newIcon != null);
+            if (objRef != null) objRef.objectReferenceValue = newIcon;
+            so.ApplyModifiedProperties();
+            node.sourceObject = so;
+            EditorUtility.SetDirty(so.targetObject);
+            handledBySource = true;
         }
 
         if (!handledBySource && node.sameNameCount > 1 &&
@@ -83,15 +91,18 @@ public partial class EASYExpressionManager
         {
             node.icon = null;   // the next scan restores what's really there
             QueueRescan();
-            return;
+            return false;
         }
 
         if (!handledBySource)
         {
             string path = PathOf(node);
-            if (!string.IsNullOrEmpty(path)) WriteOverrideMenuIcon(path, newIcon);
+            if (string.IsNullOrEmpty(path))
+                throw new System.InvalidOperationException("The icon target has no addressable menu path.");
+            WriteOverrideMenuIcon(path, newIcon);
         }
         Repaint();
+        return true;
     }
 
     void WriteOverrideMenuIcon(string internalPath, Texture2D icon)
@@ -100,10 +111,11 @@ public partial class EASYExpressionManager
         var vrcfType = ConcreteVrcfType();
         if (fType == null || vrcfType == null)
         {
-            Debug.LogWarning("[EASY] VRCFury's icon-override feature was not found — cannot set an icon on this folder.");
-            return;
+            throw new System.InvalidOperationException("VRCFury's icon-override feature was not found; the folder icon was not changed.");
         }
-        var go = GetOrCreateManager(); if (!go) return;
+        GuardAddressable(internalPath, "write icon override");
+        var go = GetOrCreateManager();
+        if (!go) throw new System.InvalidOperationException("Could not create the ExpressionsManager object for the folder icon.");
         string vrcfPath = EEMPath.ToVrcf(internalPath);
 
         bool updated = false;
@@ -123,14 +135,19 @@ public partial class EASYExpressionManager
         }
         if (updated) return;
 
-        var comp = AddFeatureComponent(go, fType); if (!comp) return;
+        var comp = AddFeatureComponent(go, fType);
+        if (!comp) throw new System.InvalidOperationException("Could not create VRCFury's icon-override feature; the icon was not changed.");
         var so = new SerializedObject(comp); so.Update();
         if (cachedIconMenuPathProp == null) DiscoverOverrideIconProps(so, fType);
         SerializedProperty pathP = null, icoP = null;
         if (cachedIconMenuPathProp != null) pathP = so.FindProperty(cachedIconMenuPathProp);
         if (cachedIconTextureProp  != null) icoP  = so.FindProperty(cachedIconTextureProp);
         if (pathP == null || icoP == null) TryOverrideIconProps(so, out pathP, out icoP, out _);
-        if (pathP == null || icoP == null) { Undo.DestroyObjectImmediate(comp); return; }
+        if (pathP == null || icoP == null)
+        {
+            Undo.DestroyObjectImmediate(comp);
+            throw new System.InvalidOperationException("VRCFury's icon-override feature has no writable path/icon properties.");
+        }
         pathP.stringValue = vrcfPath;
         icoP.objectReferenceValue = icon;
         so.ApplyModifiedProperties();
@@ -157,7 +174,8 @@ public partial class EASYExpressionManager
         {
             var live = ResolveLiveNode(n);
             if (live == null) throw new System.InvalidOperationException("The selected icon control changed during the operation; rescan before editing it.");
-            ApplyIconChange(live, ico);
+            if (!ApplyIconChange(live, ico))
+                throw new System.InvalidOperationException("Icon change cancelled; no icon changes were kept.");
             QueueRescan();
         }, new Dictionary<string, object>
         {

@@ -156,6 +156,11 @@ public partial class EASYExpressionManager
         var fp = so.FindProperty("content.fromPath");
         var tp = so.FindProperty("content.toPath");
         if (fp == null || tp == null) return;
+        // FlushRecords is also used for dependency rewrites and cleanup, so
+        // CommitMove's guard alone does not protect these actual serialized
+        // field writes.
+        GuardAddressable(r.from, "write MoveMenuItem fromPath");
+        if (!string.IsNullOrEmpty(r.to)) GuardAddressable(r.to, "write MoveMenuItem toPath");
         string fromV = EEMPath.ToVrcf(r.from);
         string toV   = EEMPath.ToVrcf(r.to);
         if (fp.stringValue == fromV && tp.stringValue == toV) return;

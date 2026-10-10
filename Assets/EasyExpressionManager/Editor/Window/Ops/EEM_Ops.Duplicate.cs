@@ -73,56 +73,59 @@ public partial class EASYExpressionManager
 
     void DuplicateVRCFuryToggle(ExpressionNode n, string newLeafName)
     {
-        if (n.sourceObject?.targetObject == null) return;
+        if (n == null || n.sourceObject?.targetObject == null)
+            throw new System.InvalidOperationException("The VRCFury source component is missing; duplicate was not created.");
         var srcComp = n.sourceObject.targetObject as Component;
-        if (!srcComp) return;
+        if (!srcComp)
+            throw new System.InvalidOperationException("The VRCFury source is not a component; duplicate was not created.");
 
 
         var targetGO = srcComp.gameObject;
         var vrcfType = ConcreteVrcfType();
-        if (vrcfType == null) return;
+        if (vrcfType == null)
+            throw new System.InvalidOperationException("VRCFury is no longer available; duplicate was not created.");
+        RequireDurableAvatarState("duplicating a VRCFury toggle");
 
         var newComp = Undo.AddComponent(targetGO, vrcfType);
-        if (!newComp) return;
+        if (!newComp)
+            throw new System.InvalidOperationException("Unity could not add the VRCFury component; duplicate was not created.");
         RegisterPluginAddition(newComp);
 
         var srcSO2 = new SerializedObject(srcComp); srcSO2.Update();
         var newSO  = new SerializedObject(newComp); newSO.Update();
         var srcContent = srcSO2.FindProperty("content");
         var dstContent = newSO.FindProperty("content");
+        if (srcContent == null || dstContent == null)
+            throw new System.InvalidOperationException("The VRCFury content could not be copied; duplicate was not created.");
 
-        if (srcContent != null && dstContent != null)
+        if (srcContent.propertyType == SerializedPropertyType.ManagedReference && srcContent.managedReferenceValue != null)
         {
-            if (srcContent.propertyType == SerializedPropertyType.ManagedReference && srcContent.managedReferenceValue != null)
+            var featureType = srcContent.managedReferenceValue.GetType();
+            try
             {
-                var featureType = srcContent.managedReferenceValue.GetType();
-                try
-                {
-                    string json   = JsonUtility.ToJson(srcContent.managedReferenceValue);
-                    var    cloned = System.Activator.CreateInstance(featureType);
-                    JsonUtility.FromJsonOverwrite(json, cloned);
-                    dstContent.managedReferenceValue = cloned;
-                    newSO.ApplyModifiedProperties();
-                }
-                catch
-                {
-                    CopySerializedPropertyDeep(srcContent, dstContent);
-                    newSO.ApplyModifiedProperties();
-                }
+                string json   = JsonUtility.ToJson(srcContent.managedReferenceValue);
+                var    cloned = System.Activator.CreateInstance(featureType);
+                JsonUtility.FromJsonOverwrite(json, cloned);
+                dstContent.managedReferenceValue = cloned;
+                newSO.ApplyModifiedProperties();
             }
-            else { CopySerializedPropertyDeep(srcContent, dstContent); newSO.ApplyModifiedProperties(); }
+            catch
+            {
+                CopySerializedPropertyDeep(srcContent, dstContent);
+                newSO.ApplyModifiedProperties();
+            }
         }
+        else { CopySerializedPropertyDeep(srcContent, dstContent); newSO.ApplyModifiedProperties(); }
 
         newSO.Update();
         var nameProp = newSO.FindProperty("content.name");
-        if (nameProp?.propertyType == SerializedPropertyType.String)
-        {
-            string cur = n.hasManagedMove ? PathOf(n) : EEMPath.FromVrcf(nameProp.stringValue);
-            nameProp.stringValue = EEMPath.ToVrcf(
-                string.IsNullOrEmpty(cur) ? EEMPath.JoinPath(new[] { newLeafName })
-                                          : EEMPath.ReplaceLastSegment(cur, newLeafName));
-            newSO.ApplyModifiedProperties();
-        }
+        if (nameProp == null || nameProp.propertyType != SerializedPropertyType.String)
+            throw new System.InvalidOperationException("The VRCFury duplicate has no writable content name; duplicate was not created.");
+        string cur = n.hasManagedMove ? PathOf(n) : EEMPath.FromVrcf(nameProp.stringValue);
+        nameProp.stringValue = EEMPath.ToVrcf(
+            string.IsNullOrEmpty(cur) ? EEMPath.JoinPath(new[] { newLeafName })
+                                      : EEMPath.ReplaceLastSegment(cur, newLeafName));
+        newSO.ApplyModifiedProperties();
         if (n.hasManagedIcon)
         {
             newSO.FindProperty("content.enableIcon")?.SetBool(n.icon != null);
@@ -135,8 +138,17 @@ public partial class EASYExpressionManager
 
     void DuplicateVRCNativeControl(ExpressionNode n, string newLeafName)
     {
+        if (n == null || !n.sourceMenu)
+            throw new System.InvalidOperationException("The native source menu is missing; duplicate was not created.");
+        if (n.sourceMenu.controls.Count >= MENU_CAPACITY)
+            throw new System.InvalidOperationException($"Native expression menus are limited to {MENU_CAPACITY} controls; duplicate was not created.");
         var menu = EnsureWritableNativeMenu(n);
-        if (!menu || n.sourceControl == null) return;
+        if (!menu)
+            throw new System.InvalidOperationException("The native menu could not be made writable; duplicate was not created.");
+        if (n.sourceControl == null)
+            throw new System.InvalidOperationException("The native source control is missing; duplicate was not created.");
+        if (menu.controls.Count >= MENU_CAPACITY)
+            throw new System.InvalidOperationException($"Native expression menus are limited to {MENU_CAPACITY} controls; duplicate was not created.");
         Undo.RecordObject(menu, $"Duplicate VRC Control \"{DisplayOf(n)}\"");
         var original = n.sourceControl;
         int idx = menu.controls.IndexOf(original);

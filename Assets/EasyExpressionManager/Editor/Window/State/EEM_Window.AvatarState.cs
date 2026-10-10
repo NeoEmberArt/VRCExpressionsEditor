@@ -19,6 +19,42 @@ public partial class EASYExpressionManager
         return gid.identifierType != 0 && gid.targetObjectId != 0 && gid.assetGUID.ToString() != new string('0', 32) ? gid.ToString() : "";
     }
 
+    static void WarnNonPersistentAvatar(GameObject target)
+    {
+        string key = "EEM.NonPersistentAvatar." + target.GetInstanceID();
+        if (SessionState.GetBool(key, false)) return;
+        SessionState.SetBool(key, true);
+        Debug.LogWarning("[EASY] Avatar state was not created because this avatar has no persistent Unity identity. " +
+            "Save the scene or prefab before using features that require durable snapshots or virtual folders.");
+    }
+
+    static bool HasStableLegacyPrefsIdentity(string legacy)
+    {
+        // LegacyPrefsSuffix() used GetHashCode() for scene/temporary objects.
+        // That value is process-dependent, so those EditorPrefs keys cannot be
+        // reconstructed safely after a Unity restart.
+        return !string.IsNullOrEmpty(legacy) &&
+            (legacy.StartsWith("guid_", StringComparison.Ordinal) || legacy.StartsWith("pfb_", StringComparison.Ordinal));
+    }
+
+    void WarnLegacyPrefsMigrationUnavailable(GameObject target, string legacy)
+    {
+        string key = "EEM.LegacyPrefsMigration." + target.GetInstanceID();
+        if (SessionState.GetBool(key, false)) return;
+        SessionState.SetBool(key, true);
+        Debug.LogWarning("[EASY] Legacy virtual-folder EditorPrefs were not imported for '" + legacy +
+            "' because its old scene/temporary identity used an unstable GetHashCode(). " +
+            "The old data cannot be matched safely; the legacy JSON file, when present, remains supported.");
+    }
+
+    EEMAvatarState RequireDurableAvatarState(string operation)
+    {
+        var state = AvatarState();
+        if (state) return state;
+        throw new InvalidOperationException("[EASY] Save the scene or prefab before " + operation + ". " +
+            "This operation needs a persistent avatar identity and durable project state.");
+    }
+
     EEMAvatarState AvatarState()
     {
         if (!avatar) return null;
@@ -28,18 +64,26 @@ public partial class EASYExpressionManager
         AssetDatabase.ImportAsset(folder, ImportAssetOptions.ForceSynchronousImport);
         string ownerId = ValidOwnerId(avatar);
         string sessionKey = SessionState.GetString("EEM.Avatar." + avatar.GetInstanceID(), "");
-        if (!string.IsNullOrEmpty(ownerId) || sessionKey != "")
+        bool hasPersistentOwner = !string.IsNullOrEmpty(ownerId);
+        if (hasPersistentOwner || sessionKey != "")
         {
             foreach (string guid in AssetDatabase.FindAssets("t:EEMAvatarState", new[] { folder }))
             {
                 var state = AssetDatabase.LoadAssetAtPath<EEMAvatarState>(AssetDatabase.GUIDToAssetPath(guid));
-                if (state && (state.ownerIds.Contains(ownerId) || state.avatarKey == sessionKey))
+                bool ownerMatch = hasPersistentOwner && state && state.ownerIds != null && state.ownerIds.Contains(ownerId);
+                bool sessionMatch = !string.IsNullOrEmpty(sessionKey) && state && state.avatarKey == sessionKey;
+                if (state && (ownerMatch || sessionMatch))
                 {
                     liveAvatarStates[avatar] = state;
                     SessionState.SetString("EEM.Avatar." + avatar.GetInstanceID(), state.avatarKey);
                     return state;
                 }
             }
+        }
+        if (!hasPersistentOwner)
+        {
+            WarnNonPersistentAvatar(avatar);
+            return null;
         }
         var created = CreateInstance<EEMAvatarState>();
         created.avatarKey = "av_" + Guid.NewGuid().ToString("N");
@@ -70,6 +114,11 @@ public partial class EASYExpressionManager
         }
         else
         {
+            if (!HasStableLegacyPrefsIdentity(legacy))
+            {
+                WarnLegacyPrefsMigrationUnavailable(avatar, legacy);
+                return;
+            }
             string oldPrefs = EditorPrefs.GetString(VF_PREFS_PREFIX + LegacyPrefsSuffix(), "");
             if (!string.IsNullOrEmpty(oldPrefs))
             {
@@ -118,8 +167,16 @@ public partial class EASYExpressionManager
 
     void RegisterPluginAddition(Component component)
     {
+        if (!component) return;
         var state = AvatarState();
-        if (!state || !component) return;
+        if (!state)
+        {
+            // Callers normally validate before adding the component. Keep this
+            // final guard from silently leaving an untracked artifact behind if
+            // an older/unowned caller does not.
+            Undo.DestroyObjectImmediate(component);
+            throw new InvalidOperationException("[EASY] Save the scene or prefab before adding a tracked VRCFury component.");
+        }
         Undo.RecordObject(state, "Track expression component");
         state.additions.Add(new EEMAddedComponent
         {

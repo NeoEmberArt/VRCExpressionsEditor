@@ -33,7 +33,8 @@ public partial class EASYExpressionManager
                 sourceControlCount = menu.controls.Count,
                 sourceKey = "vrc:" + parent.sourceKey + ":" + menu.GetInstanceID() + ":" + menu.controls.IndexOf(c)
             };
-            if (c.subMenu != null) BuildVRCMenu(node, c.subMenu, visited);
+            if (c.type == VRCExpressionsMenu.Control.ControlType.SubMenu && c.subMenu != null)
+                BuildVRCMenu(node, c.subMenu, visited);
             parent.children.Add(node);
         }
     }

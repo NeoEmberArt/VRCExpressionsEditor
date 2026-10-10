@@ -226,10 +226,11 @@ public partial class EASYExpressionManager
 
     void DeleteVRCControl(ExpressionNode n)
     {
-        var menu = EnsureWritableNativeMenu(n); if (!menu) return;
+        var menu = EnsureWritableNativeMenu(n);
+        if (!menu) throw new System.InvalidOperationException("The native menu could not be made writable; delete was cancelled.");
         Undo.RecordObject(menu, $"Delete VRC Control \"{DisplayOf(n)}\"");
         var wanted = n.sourceControl;
-        if (wanted == null) return;
+        if (wanted == null) throw new System.InvalidOperationException("The native control no longer exists; rescan before deleting it.");
         if (!menu.controls.Contains(wanted))
         {
             // Deserialization can replace a native control too. Never remove
@@ -252,8 +253,10 @@ public partial class EASYExpressionManager
 
     void DeleteVRCFuryToggleComponent(ExpressionNode n)
     {
-        if (n.sourceObject?.targetObject == null) return;
-        var comp = n.sourceObject.targetObject as Component; if (!comp) return;
+        if (n.sourceObject?.targetObject == null)
+            throw new System.InvalidOperationException("The VRCFury component no longer exists; rescan before deleting it.");
+        var comp = n.sourceObject.targetObject as Component;
+        if (!comp) throw new System.InvalidOperationException("The VRCFury delete target is not a component.");
 
         Undo.DestroyObjectImmediate(comp);
     }
@@ -263,7 +266,8 @@ public partial class EASYExpressionManager
     void DeleteFCControl(ExpressionNode n)
     {
         var writable = EnsureWritableFCMenu(n, out int idx);
-        if (writable == null || idx < 0 || idx >= writable.controls.Count) return;
+        if (writable == null || idx < 0 || idx >= writable.controls.Count)
+            throw new System.InvalidOperationException("The Full Controller control could not be made writable; delete was cancelled.");
         Undo.RecordObject(writable, $"Delete FC Control \"{DisplayOf(n)}\"");
         writable.controls.RemoveAt(idx);
         EditorUtility.SetDirty(writable);

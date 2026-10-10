@@ -41,7 +41,11 @@ public partial class EASYExpressionManager
 
         int mutationGroup = Undo.GetCurrentGroup();
         System.Exception caught = null;
-        try { mutate(); }
+        try
+        {
+            mutate();
+            VerifyMutationOutcomeOrThrow(opType, targetPath, oldValue, newValue, extraContext);
+        }
         catch (System.Exception ex)
         {
             caught = ex;
@@ -49,21 +53,96 @@ public partial class EASYExpressionManager
             Undo.RevertAllDownToGroup(mutationGroup);
             LoadVirtualFolders();
             QueueRescan();
-            // Guards (collision, loop, ambiguous path…) throw InvalidOperationException
-            // with a message written for the user. That's a refused action, not a
-            // crash — say what happened instead of dumping a red stack trace.
-            if (ex is System.InvalidOperationException)
+            // Guards (collision, loop, ambiguous path…) and explicit user
+            // cancellations are refused actions, not crashes. Keep both as
+            // warnings so a Cancel does not look like a failed mutation.
+            if (ex is System.InvalidOperationException || ex is System.OperationCanceledException)
                 Debug.LogWarning($"[EASY] {opType} not done: {ex.Message}");
             else
                 Debug.LogError($"[EASY] '{opType}' on '{targetPath}' threw: {ex}");
         }
         RefreshAvatarIdentity();
-        AssetDatabase.SaveAssetIfDirty(AvatarState());
+        var avatarState = AvatarState();
+        if (avatarState != null)
+            AssetDatabase.SaveAssetIfDirty(avatarState);
         if (debugEnabled)
             RecordDebugEntry(opType, targetPath, targetType, oldValue, newValue, caught, extraContext, existingRecordIssues);
         if (caught != null)
-            SetStatus(caught is System.InvalidOperationException ? caught.Message : $"{opType} failed — see Console.", true);
+            SetStatus(caught is System.InvalidOperationException || caught is System.OperationCanceledException
+                ? caught.Message
+                : $"{opType} failed — see Console.", true);
         return caught == null;
+    }
+
+    /// Detailed outcome capture remains optional, but operations whose callers
+    /// provide an expected result must never report success after a mutator
+    /// silently returned without applying it. This also protects duplicate
+    /// and other helpers outside the narrow operation files without changing
+    /// their source semantics.
+    void VerifyMutationOutcomeOrThrow(string opType, string targetPath, string oldValue,
+                                      string newValue, Dictionary<string, object> context)
+    {
+        switch (opType)
+        {
+            case "Rename":
+            case "Duplicate":
+            case "Delete":
+            case "BulkDelete":
+            case "IconChange":
+            case "BulkIcon":
+                break;
+            default:
+                return;
+        }
+
+        // Source-object mutations do not update the in-memory tree until the
+        // queued scan. Verify the same post-scan view used by the UI.
+        Scan();
+        RebindIconOutcomeTargetsAfterScan(opType, context);
+
+        // A path can intentionally have several rows before a rename (for
+        // example, shared/duplicate native controls). The new path is still a
+        // required postcondition, but an old-path survivor is not evidence of
+        // failure when the pre-operation path was already ambiguous.
+        string verifyOldValue = oldValue;
+        if (opType == "Rename" && context != null &&
+            context.TryGetValue("previousMatchCount", out var previousValue) &&
+            previousValue is int previousMatchCount && previousMatchCount > 1)
+            verifyOldValue = null;
+
+        var issues = new List<object>();
+        VerifyExpectedOutcome(opType, targetPath, verifyOldValue, newValue, context, issues);
+        string failure = issues.Select(i => i?.ToString() ?? "")
+            .FirstOrDefault(s => s.StartsWith("OUTCOME MISMATCH") || s.StartsWith("EMPTY DUPLICATE"));
+        if (!string.IsNullOrEmpty(failure))
+            throw new System.InvalidOperationException(failure);
+    }
+
+    /// Clone-on-write can replace a source object between the pre-operation
+    /// capture and the verification Scan(), which changes the instance-ID
+    /// portion of a node's stableKey. Rebind only when the post-scan path has
+    /// an item already carrying the expected icon; otherwise leave the old key
+    /// in place so VerifyExpectedOutcome still reports a real disappearance.
+    void RebindIconOutcomeTargetsAfterScan(string opType, Dictionary<string, object> context)
+    {
+        if ((opType != "IconChange" && opType != "BulkIcon") || context == null ||
+            !context.TryGetValue("expectedIconId", out var wantedValue) ||
+            !(wantedValue is int wantedId) ||
+            !context.TryGetValue("expectedIconTargets", out var targetsValue) ||
+            !(targetsValue is List<object> iconTargets)) return;
+
+        foreach (var target in iconTargets.OfType<Dictionary<string, object>>())
+        {
+            string key = target.TryGetValue("stableKey", out var keyValue) ? keyValue as string : null;
+            if (!string.IsNullOrEmpty(key) && allNodesFlatList.Any(n => n.stableKey == key)) continue;
+
+            string path = target.TryGetValue("path", out var pathValue) ? pathValue as string : null;
+            var matches = FindAllNodesAtPath(root, path ?? "")
+                .Where(n => (n.icon ? n.icon.GetInstanceID() : 0) == wantedId)
+                .ToList();
+            if (matches.Count > 0)
+                target["stableKey"] = matches[0].stableKey;
+        }
     }
 
     /// Captured once per avatar, the first time an operation runs — "what the

@@ -31,7 +31,10 @@ public partial class EASYExpressionManager
                         string file = null;
                         Undo.IncrementCurrentGroup();
                         Undo.SetCurrentGroupName("Take expression snapshot");
-                        LogOp("Snapshot", "", "Snapshot", "", label, () => { file = WriteSnapshot(label, false); });
+                        bool completed = LogOp("Snapshot", "", "Snapshot", "", label,
+                            () => { file = WriteSnapshot(label, false); });
+                        if (!completed || string.IsNullOrWhiteSpace(file))
+                            throw new System.InvalidOperationException("The snapshot operation did not produce a validated file.");
                         if (file != null)
                         {
                             Debug.Log("[EASY] Snapshot saved to " + file);
@@ -96,7 +99,11 @@ public partial class EASYExpressionManager
             string label = MiniJson.Str(d, "label", name);
             string when  = MiniJson.Str(d, "createdAt", "");
             bool baseline = MiniJson.Bool(d, "isBaseline");
-            return (MiniJson.Str(d, "avatarKey") != AvatarKey() ? "[Legacy / different instance] " : "") + (baseline ? "★ " : "") + label + (string.IsNullOrEmpty(when) ? "" : "   (" + when + ")");
+            string key = MiniJson.Str(d, "avatarKey", "");
+            string identity = string.IsNullOrWhiteSpace(key)
+                ? "[No avatar identity] "
+                : (key != AvatarKey() ? "[Legacy / different instance] " : "");
+            return identity + (baseline ? "★ " : "") + label + (string.IsNullOrEmpty(when) ? "" : "   (" + when + ")");
         }
         catch { return name; }
     }

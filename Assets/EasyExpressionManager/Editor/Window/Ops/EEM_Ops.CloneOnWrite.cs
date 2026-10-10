@@ -18,11 +18,19 @@ public partial class EASYExpressionManager
     VRCExpressionsMenu EnsureWritableNativeMenu(ExpressionNode node)
     {
         if (node == null || !node.sourceMenu || node.isFromFullController) return null;
+        RequireDurableAvatarState("editing native expression menus");
         var descriptor = avatar ? avatar.GetComponent<VRCAvatarDescriptor>() : null;
         if (!descriptor || !descriptor.expressionsMenu) return null;
         var graph = CaptureFCControlArrays(new[] { descriptor.expressionsMenu });
         if (!graph.ContainsKey(node.sourceMenu))
             throw new System.InvalidOperationException("This native menu changed; rescan before editing it.");
+        if (NativeMenuSharedWithinOwner(node.sourceMenu, descriptor) &&
+            !EditorUtility.DisplayDialog(
+                "Shared native menu",
+                "This native submenu is referenced by multiple controls in this avatar. " +
+                "Editing it will affect every branch that shares it. Continue only if that global change is intended.",
+                "Edit all branches", "Cancel"))
+            throw new System.InvalidOperationException("Native edit canceled because the menu is shared by multiple branches.");
         if (graph.Keys.All(menu => IsOwnedClone(menu) && !NativeMenuUsedElsewhere(menu, descriptor)))
             return node.sourceMenu;
         var rows = new HashSet<ExpressionNode>();
@@ -66,6 +74,31 @@ public partial class EASYExpressionManager
         return node.sourceMenu;
     }
 
+    bool NativeMenuSharedWithinOwner(VRCExpressionsMenu menu, VRCAvatarDescriptor owner)
+    {
+        if (!menu || !owner || !owner.expressionsMenu || menu == owner.expressionsMenu) return false;
+        return CountMenuReferences(owner.expressionsMenu, menu) > 1;
+    }
+
+    static int CountMenuReferences(VRCExpressionsMenu root, VRCExpressionsMenu wanted)
+    {
+        if (!root || !wanted) return 0;
+        int count = 0;
+        void Walk(VRCExpressionsMenu current, HashSet<VRCExpressionsMenu> path)
+        {
+            if (!current || count > 1 || !path.Add(current)) return;
+            foreach (var control in current.controls)
+            {
+                if (!control?.subMenu) continue;
+                if (control.subMenu == wanted) count++;
+                if (count > 1) return;
+                Walk(control.subMenu, new HashSet<VRCExpressionsMenu>(path));
+            }
+        }
+        Walk(root, new HashSet<VRCExpressionsMenu>());
+        return count;
+    }
+
     bool NativeMenuUsedElsewhere(VRCExpressionsMenu menu, VRCAvatarDescriptor owner)
     {
         if (Resources.FindObjectsOfTypeAll<VRCAvatarDescriptor>().Any(d => d && d != owner &&
@@ -86,6 +119,29 @@ public partial class EASYExpressionManager
     [System.NonSerialized] private string regressionCloneRoot;
     string CloneRoot() => regressionCloneRoot ?? CLONE_ROOT;
 
+    [MenuItem("Tools/Easy Expression Manager/Generated Asset Inventory")]
+    static void LogGeneratedAssetInventory()
+    {
+        const string root = "Assets/EasyExpressionManager_Generated";
+        if (!AssetDatabase.IsValidFolder(root))
+        {
+            Debug.Log("[EASY] Generated asset inventory: " + root + " does not exist. Nothing was deleted.");
+            return;
+        }
+        var paths = AssetDatabase.FindAssets("t:VRCExpressionsMenu", new[] { root })
+            .Select(AssetDatabase.GUIDToAssetPath)
+            .Where(path => !string.IsNullOrEmpty(path))
+            .OrderBy(path => path, System.StringComparer.Ordinal)
+            .ToList();
+        if (paths.Count == 0)
+        {
+            Debug.Log("[EASY] Generated asset inventory: no VRCExpressionsMenu clones found under " + root + ". Nothing was deleted.");
+            return;
+        }
+        Debug.Log("[EASY] Generated asset inventory: " + paths.Count + " VRCExpressionsMenu clone(s) under " + root + ". Review/delete manually if appropriate. Nothing was deleted.\n" +
+            string.Join("\n", paths));
+    }
+
     bool IsOwnedClone(Object asset)
     {
         string p = AssetDatabase.GetAssetPath(asset);
@@ -94,6 +150,7 @@ public partial class EASYExpressionManager
 
     string OwnedCloneFolder()
     {
+        RequireDurableAvatarState("resolving generated expression-menu ownership");
         string safeName = string.Join("_", (avatar ? avatar.name : "Avatar").Split(Path.GetInvalidFileNameChars()));
         return CloneRoot() + "/" + safeName + "_" + AvatarKey();
     }
@@ -109,6 +166,7 @@ public partial class EASYExpressionManager
     VRCExpressionsMenu CloneMenuAsset(VRCExpressionsMenu source)
     {
         if (!source) return null;
+        RequireDurableAvatarState("creating generated expression-menu assets");
         string dest = AssetDatabase.GenerateUniqueAssetPath(
             CloneFolderForAvatar() + "/" + SafeFileName(source.name) + ".asset");
         var clone = Instantiate(source);
@@ -183,6 +241,7 @@ public partial class EASYExpressionManager
         controlIndex = -1;
         if (node?.sourceFullControllerMenu == null || node.sourceFullControllerObject?.targetObject == null ||
             node.sourceControl == null) return null;
+        RequireDurableAvatarState("editing Full Controller expression menus");
         var owner = node.sourceFullControllerObject.targetObject;
         var chain = node.fcChain.Count > 0 ? node.fcChain : new List<VRCExpressionsMenu> { node.sourceFullControllerMenu };
         // Copying or unpacking can recreate controls on other branches too.

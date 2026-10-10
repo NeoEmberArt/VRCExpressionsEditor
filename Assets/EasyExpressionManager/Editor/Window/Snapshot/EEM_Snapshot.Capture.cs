@@ -13,30 +13,79 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 
 public partial class EASYExpressionManager
 {
+    readonly Dictionary<VRCExpressionsMenu, string> snapshotNonAssetMenuIds =
+        new Dictionary<VRCExpressionsMenu, string>();
+    int snapshotNonAssetMenuCounter;
 
     string WriteSnapshot(string label, bool isBaseline, bool automatic = false)
     {
-        if (!avatar) return null;
+        if (!avatar)
+            throw new System.InvalidOperationException("Cannot create a snapshot because no avatar is selected.");
         RefreshAvatarIdentity();
-        AssetDatabase.SaveAssetIfDirty(AvatarState());
+        var state = AvatarState();
+        if (!state)
+            throw new System.InvalidOperationException(
+                "Cannot create a snapshot because the selected avatar has no durable identity. Save the scene or prefab first.");
+        AssetDatabase.SaveAssetIfDirty(state);
         string dir = SnapshotFolder();
-        if (dir == null) return null;
+        if (string.IsNullOrEmpty(dir))
+            throw new System.InvalidOperationException(
+                "Cannot create a snapshot because its project data folder could not be determined.");
 
-        var payload = BuildSnapshotPayload(label, isBaseline);
+        var payload = BuildSnapshotPayload(label, isBaseline, automatic);
         string safeLabel = string.Join("_", (label ?? "snapshot").Split(Path.GetInvalidFileNameChars()));
         if (safeLabel.Length > 40) safeLabel = safeLabel.Substring(0, 40);
         string prefix = isBaseline ? "baseline_" : automatic ? "auto_" : "snap_";
         string file = dir + "/" + prefix + System.DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + "_" + safeLabel + ".json";
         file = AssetDatabase.GenerateUniqueAssetPath(file);
 
-        File.WriteAllText(ProjectToAbsolute(file), MiniJson.Pretty(payload));
-        AssetDatabase.ImportAsset(file);
-        if (automatic) PruneAutomaticSnapshots(dir);
-        return file;
+        string absolute = ProjectToAbsolute(file);
+        string temporary = absolute + ".tmp";
+        bool movedIntoPlace = false;
+        try
+        {
+            string text = MiniJson.Pretty(payload);
+            if (string.IsNullOrWhiteSpace(text))
+                throw new System.InvalidOperationException("Snapshot serialization returned no data.");
+
+            if (File.Exists(temporary)) File.Delete(temporary);
+            File.WriteAllText(temporary, text);
+            if (!File.Exists(temporary) || new FileInfo(temporary).Length == 0)
+                throw new System.IO.IOException("The temporary snapshot file was empty after writing.");
+
+            var written = MiniJson.AsDict(MiniJson.Parse(File.ReadAllText(temporary)));
+            if (!ValidateSnapshotPayload(written, out string validationError))
+                throw new System.InvalidOperationException("Snapshot validation failed before import: " + validationError);
+
+            // GenerateUniqueAssetPath should make this impossible. Refuse a
+            // race rather than overwriting an existing snapshot.
+            if (File.Exists(absolute))
+                throw new System.IO.IOException("A snapshot with the generated path already exists.");
+            File.Move(temporary, absolute);
+            movedIntoPlace = true;
+            AssetDatabase.ImportAsset(file, ImportAssetOptions.ForceSynchronousImport);
+
+            if (!File.Exists(absolute) || new FileInfo(absolute).Length == 0)
+                throw new System.IO.IOException("The imported snapshot file was empty or disappeared.");
+            if (automatic) PruneAutomaticSnapshots(dir);
+            return file;
+        }
+        catch (System.Exception ex)
+        {
+            try { if (File.Exists(temporary)) File.Delete(temporary); } catch { }
+            if (movedIntoPlace)
+            {
+                try { AssetDatabase.DeleteAsset(file); } catch { }
+                try { if (File.Exists(absolute)) File.Delete(absolute); } catch { }
+            }
+            throw new System.InvalidOperationException("Snapshot write failed: " + ex.Message, ex);
+        }
     }
 
-    Dictionary<string, object> BuildSnapshotPayload(string label, bool isBaseline)
+    Dictionary<string, object> BuildSnapshotPayload(string label, bool isBaseline, bool automatic)
     {
+        snapshotNonAssetMenuIds.Clear();
+        snapshotNonAssetMenuCounter = 0;
         var comps = new List<object>();
         foreach (var entry in EnumerateVrcfComponents())
             comps.Add(CaptureComponent(entry.comp, entry.path, entry.typeName, entry.order));
@@ -52,12 +101,15 @@ public partial class EASYExpressionManager
             ["createdAt"]      = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             ["label"]          = label ?? "",
             ["isBaseline"]     = isBaseline,
+            ["automatic"]      = automatic,
             ["avatarName"]     = avatar ? avatar.name : null,
             ["avatarKey"]      = AvatarKey(),
             ["virtualFolders"] = virtualFolderPaths.Cast<object>().ToList(),
             ["vrcfComponents"] = comps,
             ["menuAssets"]     = menus,
-            ["nativeMenu"]     = AssetRefDescriptor(avatar.GetComponent<VRCAvatarDescriptor>()?.expressionsMenu),
+            ["nativeMenu"]     = MenuReferenceDescriptor(avatar.GetComponent<VRCAvatarDescriptor>()?.expressionsMenu),
+            ["expressionParameters"] = AssetRefDescriptor(
+                avatar.GetComponent<VRCAvatarDescriptor>()?.expressionParameters),
         };
     }
 
@@ -99,9 +151,17 @@ public partial class EASYExpressionManager
 
     Dictionary<string, object> CaptureComponent(Component comp, string path, string typeName, int order)
     {
-        string json = "";
+        string json;
         try { json = EditorJsonUtility.ToJson(comp); }
-        catch (System.Exception ex) { Debug.LogWarning($"[EASY] Could not serialise {typeName} on '{path}': {ex.Message}"); }
+        catch (System.Exception ex)
+        {
+            throw new System.InvalidOperationException(
+                $"Could not serialize {typeName} on '{path}': {ex.Message}", ex);
+        }
+        if (string.IsNullOrWhiteSpace(json))
+            throw new System.InvalidOperationException($"Serialization returned no data for {typeName} on '{path}'.");
+        if (!(MiniJson.Parse(json) is Dictionary<string, object>))
+            throw new System.InvalidOperationException($"Serialization returned an invalid component object for {typeName} on '{path}'.");
 
         // instanceIDs are only meaningful inside this editor session — swap them
         // for descriptors that survive a restart.
@@ -112,12 +172,20 @@ public partial class EASYExpressionManager
             if (refs.ContainsKey(idStr)) continue;
             if (!int.TryParse(idStr, out int id) || id == 0) continue;
             var descriptor = DescribeObjectReference(id);
-            if (descriptor != null) refs[idStr] = descriptor;
+            refs[idStr] = descriptor ?? new Dictionary<string, object>
+            {
+                // This is an explicit Unity serialized Object reference whose
+                // target cannot survive capture. Do not confuse it with a
+                // VRCFury GuidWrapper field: those are not named instanceID
+                // and are intentionally not rewritten here.
+                ["kind"] = "unresolved",
+                ["instanceId"] = idStr,
+            };
         }
 
         // Identity that survives the object being renamed or moved, so restore
         // can still find it. (Unpacking a prefab changes these ids; the
-        // object-name fallback in restore covers that case.)
+        // exact hierarchy/path matching in restore covers that case.)
         var go = comp ? comp.gameObject : null;
         return new Dictionary<string, object>
         {
@@ -186,7 +254,7 @@ public partial class EASYExpressionManager
         var seen = new HashSet<VRCExpressionsMenu>();
         if (!avatar) return found;
 
-        void Collect(VRCExpressionsMenu m, int depth)
+        void Collect(VRCExpressionsMenu m)
         {
             var pending = new Stack<VRCExpressionsMenu>();
             if (m) pending.Push(m);
@@ -201,20 +269,27 @@ public partial class EASYExpressionManager
         }
 
         var desc = avatar.GetComponent<VRCAvatarDescriptor>();
-        if (desc?.expressionsMenu != null) Collect(desc.expressionsMenu, 0);
+        if (desc?.expressionsMenu != null) Collect(desc.expressionsMenu);
 
         foreach (var comp in avatar.GetComponentsInChildren<Component>(true))
         {
             if (!comp || comp is Transform) continue;
             string fn = comp.GetType().FullName ?? "";
             if (!fn.Contains("VRCFury") && !fn.Contains("VF.")) continue;
+            // Current VRCFury stores Full Controller menus under content.menus;
+            // older components store them under config.features. Walking all
+            // serialized object references covers both layouts without naming
+            // either private schema, and the graph collector de-duplicates
+            // shared menus/cycles.
             var so = new SerializedObject(comp);
-            var menusProp = so.FindProperty("content.menus");
-            if (menusProp == null || !menusProp.isArray) continue;
-            for (int i = 0; i < menusProp.arraySize; i++)
+            var property = so.GetIterator();
+            bool enterChildren = true;
+            while (property.Next(enterChildren))
             {
-                var objRef = menusProp.GetArrayElementAtIndex(i).FindPropertyRelative("menu.objRef");
-                if (objRef?.objectReferenceValue is VRCExpressionsMenu m) Collect(m, 0);
+                enterChildren = false;
+                if (property.propertyType == SerializedPropertyType.ObjectReference &&
+                    property.objectReferenceValue is VRCExpressionsMenu m)
+                    Collect(m);
             }
         }
         return found;
@@ -222,7 +297,6 @@ public partial class EASYExpressionManager
 
     Dictionary<string, object> CaptureMenuAsset(VRCExpressionsMenu menu)
     {
-        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(menu, out string guid, out long localId);
         var controls = new List<object>();
         foreach (var c in menu.controls)
         {
@@ -235,7 +309,7 @@ public partial class EASYExpressionManager
                 ["value"]         = c.value,
                 ["parameter"]     = c.parameter?.name ?? "",
                 ["icon"]          = AssetRefDescriptor(c.icon),
-                ["subMenu"]       = AssetRefDescriptor(c.subMenu),
+                ["subMenu"]       = MenuReferenceDescriptor(c.subMenu),
                 ["subParameters"] = (c.subParameters ?? new VRCExpressionsMenu.Control.Parameter[0])
                                         .Select(p => (object)(p?.name ?? "")).ToList(),
                 // labels are Label objects (name + icon), not plain strings
@@ -247,14 +321,41 @@ public partial class EASYExpressionManager
                                         }).ToList(),
             });
         }
+        var result = MenuReferenceDescriptor(menu);
+        if (result == null)
+            throw new System.InvalidOperationException("Expression menu has no stable snapshot identity.");
+        result["name"] = menu.name;
+        result["path"] = AssetDatabase.GetAssetPath(menu);
+        result["parametersAsset"] = AssetRefDescriptor(menu.Parameters);
+        result["controls"] = controls;
+        return result;
+    }
+
+    Dictionary<string, object> MenuReferenceDescriptor(VRCExpressionsMenu menu)
+    {
+        if (menu == null) return null;
+        if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(menu, out string guid, out long localId) &&
+            !string.IsNullOrEmpty(guid))
+            return new Dictionary<string, object>
+            {
+                ["kind"] = "asset",
+                ["guid"] = guid,
+                ["localId"] = localId.ToString(),
+                ["type"] = menu.GetType().FullName,
+            };
+
+        if (!snapshotNonAssetMenuIds.TryGetValue(menu, out string snapshotId))
+        {
+            snapshotId = "menu-" + (++snapshotNonAssetMenuCounter).ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+            snapshotNonAssetMenuIds[menu] = snapshotId;
+        }
         return new Dictionary<string, object>
         {
-            ["guid"]     = guid,
-            ["localId"]  = localId.ToString(),
-            ["name"]     = menu.name,
-            ["path"]     = AssetDatabase.GetAssetPath(menu),
-            ["parametersAsset"] = AssetRefDescriptor(menu.Parameters),
-            ["controls"] = controls,
+            ["kind"] = "nonasset",
+            ["snapshotId"] = snapshotId,
+            ["type"] = menu.GetType().FullName,
+            ["name"] = menu.name,
         };
     }
 

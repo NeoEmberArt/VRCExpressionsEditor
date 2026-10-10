@@ -54,9 +54,7 @@ public partial class EASYExpressionManager
     void PruneAutomaticSnapshots(string folder)
     {
         var files = Directory.GetFiles(ProjectToAbsolute(folder), "*.json")
-            .Where(path => Path.GetFileName(path).StartsWith("auto_", System.StringComparison.Ordinal) ||
-                Path.GetFileName(path).StartsWith("snap_", System.StringComparison.Ordinal) &&
-                Path.GetFileName(path).Contains("_Before dissolving "))
+            .Where(IsAutomaticSnapshotFile)
             .Select(path => new FileInfo(path)).OrderByDescending(file => file.Name).ToList();
         long bytes = 0;
         for (int i = 0; i < files.Count; i++)
@@ -66,6 +64,21 @@ public partial class EASYExpressionManager
             string path = folder + "/" + files[i].Name;
             if (!AssetDatabase.DeleteAsset(path)) File.Delete(files[i].FullName);
         }
+    }
+
+    bool IsAutomaticSnapshotFile(string absolutePath)
+    {
+        string name = Path.GetFileName(absolutePath);
+        // Files written before metadata existed are identifiable only by the
+        // reserved auto_ prefix. A manual snap_ label is never inferred to be
+        // automatic from its human-readable text.
+        if (name.StartsWith("auto_", System.StringComparison.Ordinal)) return true;
+        try
+        {
+            var data = MiniJson.AsDict(MiniJson.Parse(File.ReadAllText(absolutePath)));
+            return data != null && MiniJson.Bool(data, "automatic", false);
+        }
+        catch { return false; }
     }
 
     bool HasBaselineSnapshot() =>
